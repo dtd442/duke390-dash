@@ -1,0 +1,20 @@
+# Build
+build/
+app/build/
+.gradle/
+*.class
+
+# Android Studio
+.idea/
+*.iml
+local.properties
+*.DS_Store
+
+# Chiavi e secrets — MAI caricare
+*.jks
+*.keystore
+google-services.json
+secrets.properties
+
+# Log e output locali
+*.log

@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:padding="4dp">
+
+    <!-- SPIE -->
+    <TextView
+        android:id="@+id/spiaTpms"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/label_tpms"
+        android:textColor="#FF3300"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Badge MIL/DTC — visibile solo quando MIL accesa o DTC presenti.
+         Posizionato al centro in alto, tra le due spie. -->
+    <TextView
+        android:id="@+id/spiaMil"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="1dp"
+        android:paddingBottom="1dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/spiaObd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/label_obd2"
+        android:textColor="#FF3300"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- GOMME -->
+    <LinearLayout
+        android:id="@+id/sectionGomme"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="2dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/spiaTpms"
+        app:layout_constraintBottom_toTopOf="@id/sectionMotore"
+        app:layout_constraintVertical_weight="1.8">
+
+        <LinearLayout
+            android:id="@+id/blockAnt"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical"
+            android:background="#1A1A1A"
+            android:padding="7dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_anteriore" android:textColor="#FFFFFF"
+                android:textSize="12sp" android:textStyle="bold"/>
+            <ProgressBar android:id="@+id/barAntPress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:layout_marginTop="4dp" android:max="100"
+                android:progress="0" android:progressTint="#FF6600"/>
+            <TextView android:id="@+id/valAntPress"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="20sp" android:textStyle="bold"/>
+            <TextView android:id="@+id/commentAntPress"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/dash" android:textColor="#FFFFFF"
+                android:textSize="11sp" android:textStyle="bold"/>
+            <View android:layout_width="match_parent" android:layout_height="1dp"
+                android:layout_marginTop="4dp" android:layout_marginBottom="4dp"
+                android:background="#1A1A1A"/>
+            <ProgressBar android:id="@+id/barAntTemp"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:max="100" android:progress="0" android:progressTint="#4DA6FF"/>
+            <TextView android:id="@+id/valAntTemp"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="20sp" android:textStyle="bold"/>
+            <TextView android:id="@+id/commentAntTemp"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/dash" android:textColor="#FFFFFF"
+                android:textSize="11sp" android:textStyle="bold"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/blockPost"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:orientation="vertical"
+            android:background="#1A1A1A"
+            android:padding="7dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_posteriore" android:textColor="#FFFFFF"
+                android:textSize="12sp" android:textStyle="bold"/>
+            <ProgressBar android:id="@+id/barPostPress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:layout_marginTop="4dp" android:max="100"
+                android:progress="0" android:progressTint="#FF6600"/>
+            <TextView android:id="@+id/valPostPress"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="20sp" android:textStyle="bold"/>
+            <TextView android:id="@+id/commentPostPress"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/dash" android:textColor="#FFFFFF"
+                android:textSize="11sp" android:textStyle="bold"/>
+            <View android:layout_width="match_parent" android:layout_height="1dp"
+                android:layout_marginTop="4dp" android:layout_marginBottom="4dp"
+                android:background="#1A1A1A"/>
+            <ProgressBar android:id="@+id/barPostTemp"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:max="100" android:progress="0" android:progressTint="#4DA6FF"/>
+            <TextView android:id="@+id/valPostTemp"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="20sp" android:textStyle="bold"/>
+            <TextView android:id="@+id/commentPostTemp"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/dash" android:textColor="#FFFFFF"
+                android:textSize="11sp" android:textStyle="bold"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- MOTORE -->
+    <LinearLayout
+        android:id="@+id/sectionMotore"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:weightSum="4.61"
+        android:layout_marginBottom="2dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/sectionGomme"
+        app:layout_constraintBottom_toTopOf="@id/sectionPicchi"
+        app:layout_constraintVertical_weight="4.2">
+
+        <!-- TPS -->
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="0.87" android:layout_marginBottom="2dp"
+            android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_tps" android:textColor="#FFFFFF"
+                android:textSize="12sp" android:textStyle="bold"/>
+            <ProgressBar android:id="@+id/barTps"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:layout_marginTop="4dp" android:max="100"
+                android:progress="0" android:progressTint="#FF6600"/>
+            <TextView android:id="@+id/valTps"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="20sp" android:textStyle="bold"/>
+            <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+        </LinearLayout>
+
+        <!-- CARICO -->
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="0.87" android:layout_marginBottom="2dp"
+            android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_load" android:textColor="#FFFFFF"
+                android:textSize="12sp" android:textStyle="bold"/>
+            <ProgressBar android:id="@+id/barLoad"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:layout_marginTop="4dp" android:max="100"
+                android:progress="0" android:progressTint="#FF6600"/>
+            <TextView android:id="@+id/valLoad"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="20sp" android:textStyle="bold"/>
+            <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+        </LinearLayout>
+
+        <!-- G LATERALI -->
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="0.87" android:layout_marginBottom="2dp"
+            android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_g_lateral" android:textColor="#FFFFFF"
+                android:textSize="12sp" android:textStyle="bold"/>
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="6dp"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:background="#333333">
+                <ProgressBar android:id="@+id/barGLeft"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="0dp" android:layout_height="6dp"
+                    android:layout_weight="1" android:max="100" android:progress="0"
+                    android:rotationY="180"
+                    android:progressTint="#FF3300" android:progressBackgroundTint="#00000000"/>
+                <View android:layout_width="2dp" android:layout_height="6dp" android:background="#666666"/>
+                <ProgressBar android:id="@+id/barGRight"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="0dp" android:layout_height="6dp"
+                    android:layout_weight="1" android:max="100" android:progress="0"
+                    android:progressTint="#FF3300" android:progressBackgroundTint="#00000000"/>
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView android:id="@+id/valGDir"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:text="•" android:textColor="#FFFFFF"
+                    android:textSize="20sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/valG"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="0.00 G" android:textColor="#FFFFFF"
+                    android:textSize="20sp" android:textStyle="bold" android:gravity="center"/>
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:text=""/>
+            </LinearLayout>
+            <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+        </LinearLayout>
+
+        <!-- ARIA + ANTICIPO -->
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:layout_marginBottom="2dp"
+            android:orientation="horizontal" android:weightSum="2">
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="match_parent"
+                android:layout_weight="1" android:layout_marginEnd="2dp"
+                android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/label_iat" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"/>
+                <ProgressBar android:id="@+id/barIat"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="6dp"
+                    android:layout_marginTop="4dp" android:max="100"
+                    android:progress="0" android:progressTint="#4DA6FF"/>
+                <TextView android:id="@+id/valIat"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/na" android:textColor="#FFFFFF"
+                    android:textSize="20sp" android:textStyle="bold"/>
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="match_parent"
+                android:layout_weight="1" android:layout_marginStart="2dp"
+                android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/label_ignition" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"/>
+                <ProgressBar android:id="@+id/barAfr"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="6dp"
+                    android:layout_marginTop="4dp" android:max="100"
+                    android:progress="0" android:progressTint="#00CC44"/>
+                <TextView android:id="@+id/valAfr"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/na" android:textColor="#FFFFFF"
+                    android:textSize="20sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/commentAfr"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="" android:textColor="#FFFFFF"
+                    android:textSize="11sp" android:textStyle="bold"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- CONSUMO + FUEL TRIM -->
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal" android:weightSum="2">
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="match_parent"
+                android:layout_weight="1" android:layout_marginEnd="2dp"
+                android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/label_consume" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"/>
+                <ProgressBar android:id="@+id/barConsume"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="6dp"
+                    android:layout_marginTop="4dp" android:max="100"
+                    android:progress="0" android:progressTint="#00CC44"/>
+                <TextView android:id="@+id/valConsume"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/na" android:textColor="#FFFFFF"
+                    android:textSize="20sp" android:textStyle="bold"/>
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="match_parent"
+                android:layout_weight="1" android:layout_marginStart="2dp"
+                android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/label_fuel_trim" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"/>
+                <ProgressBar android:id="@+id/barOilTemp"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="6dp"
+                    android:layout_marginTop="4dp" android:max="100"
+                    android:progress="0" android:progressTint="#FF6600"/>
+                <TextView android:id="@+id/valOilTemp"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/na" android:textColor="#FFFFFF"
+                    android:textSize="20sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/commentOilTemp"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/dash" android:textColor="#FFFFFF"
+                    android:textSize="11sp" android:textStyle="bold"/>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- PICCHI -->
+    <LinearLayout
+        android:id="@+id/sectionPicchi"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="horizontal"
+        android:weightSum="3"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/sectionMotore"
+        app:layout_constraintVertical_weight="1">
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:layout_marginEnd="2dp"
+            android:orientation="vertical" android:background="#1A1A1A"
+            android:gravity="center" android:padding="6dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_speed_max" android:textColor="#FFFFFF"
+                android:textSize="9sp" android:textStyle="bold" android:gravity="center"/>
+            <TextView android:id="@+id/valSpeedMax"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="23sp" android:textStyle="bold" android:gravity="center"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical" android:background="#1A1A1A"
+            android:gravity="center" android:padding="6dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_rpm_max" android:textColor="#FFFFFF"
+                android:textSize="9sp" android:textStyle="bold" android:gravity="center"/>
+            <TextView android:id="@+id/valRpmMax"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="23sp" android:textStyle="bold" android:gravity="center"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:layout_marginStart="2dp"
+            android:orientation="vertical" android:background="#1A1A1A"
+            android:gravity="center" android:padding="6dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/label_load_max" android:textColor="#FFFFFF"
+                android:textSize="9sp" android:textStyle="bold" android:gravity="center"/>
+            <TextView android:id="@+id/valLoadMax"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/na" android:textColor="#FFFFFF"
+                android:textSize="23sp" android:textStyle="bold" android:gravity="center"/>
+        </LinearLayout>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

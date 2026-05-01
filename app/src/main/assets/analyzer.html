@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Duke 390 — Telemetry Analyzer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+    :root {
+      --bg:#0b0c10; --bg2:#13141a; --border:#21232d;
+      --text:#d0d2da; --dim:#52556a;
+      --or:#ff5500; --pu:#9f7aff; --cy:#00c8e0;
+      --gn:#00d47a; --ye:#f0c040; --re:#ff3348; --ow:#ff8800;
+      --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100%;overflow-x:hidden;}
+
+    /* loader */
+    #loader{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:18px;z-index:99;}
+    .L-t{font-family:var(--mono);font-size:clamp(26px,7vw,46px);font-weight:600;color:var(--or);letter-spacing:4px;}
+    .L-s{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:5px;}
+    .L-hr{width:40px;height:1px;background:var(--or);opacity:.3;}
+    .L-d{font-size:13px;color:var(--dim);text-align:center;max-width:280px;line-height:1.8;}
+    .Lb{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:3px;color:var(--or);
+      background:transparent;border:1px solid var(--or);padding:12px 30px;cursor:pointer;}
+    .Lb:hover{background:rgba(255,85,0,.1);}
+    .Ld{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--dim);
+      background:transparent;border:1px solid var(--border);padding:7px 18px;cursor:pointer;}
+    .Ld:hover{color:var(--text);}
+    #fi{display:none;}
+
+    /* app */
+    #app{display:none;flex-direction:column;min-height:100vh;}
+    #app.on{display:flex;}
+
+    /* sticky top */
+    .sticky-top{position:sticky;top:0;z-index:10;background:var(--bg2);}
+
+    /* header */
+    header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+      padding:12px 20px;border-bottom:1px solid var(--border);}
+    .hb{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--or);letter-spacing:2px;}
+    .hm{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:4px;margin-top:2px;}
+    .hs{display:flex;gap:18px;flex-wrap:wrap;}
+    .hsi{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
+    .hsi-l{font-size:9px;font-family:var(--mono);color:var(--dim);letter-spacing:2px;}
+    .hsi-v{font-size:13px;font-family:var(--mono);font-weight:600;}
+    .hn{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--dim);
+      background:transparent;border:1px solid var(--border);padding:5px 12px;cursor:pointer;}
+    .hn:hover{color:var(--or);border-color:var(--or);}
+
+    /* scrub */
+    .scrub{display:flex;align-items:center;gap:12px;padding:8px 20px;
+      border-bottom:1px solid var(--border);}
+    .sc-l{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:2px;white-space:nowrap;}
+    #scrub{flex:1;height:4px;accent-color:var(--or);cursor:pointer;}
+    .sc-t{font-family:var(--mono);font-size:11px;color:var(--text);min-width:50px;text-align:right;}
+
+    /* grid */
+    .grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
+    @media(max-width:600px){.grid{grid-template-columns:1fr;}}
+    .panel{background:var(--bg2);padding:16px 16px 12px;display:flex;flex-direction:column;gap:8px;}
+    .panel.wide{grid-column:1/-1;}
+    .ph{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+    .pt{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:3px;color:var(--dim);}
+    .pv{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;}
+    .pc{font-family:var(--mono);font-size:20px;font-weight:600;}
+    .pc.s{font-size:15px;}
+    .pu{font-family:var(--mono);font-size:9px;color:var(--dim);}
+    .pm{display:flex;gap:12px;flex-wrap:wrap;}
+    .pmi{font-family:var(--mono);font-size:9px;color:var(--dim);}
+    .pmi b{color:var(--text);font-weight:500;}
+    .cc{position:relative;width:100%;height:110px;}
+    .panel:not(.wide) .cc{height:95px;}
+    canvas.base{position:absolute;top:0;left:0;width:100%;height:100%;display:block;}
+    canvas.over{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;}
+    .leg{display:flex;gap:12px;flex-wrap:wrap;}
+    .legi{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--dim);}
+    .legc{width:20px;height:2px;border-radius:1px;}
+
+    /* MIL badge */
+    .mil-on{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:600;
+      letter-spacing:2px;color:#000;background:var(--re);padding:2px 6px;border-radius:2px;}
+    .mil-off{display:inline-block;font-family:var(--mono);font-size:9px;
+      letter-spacing:2px;color:var(--dim);}
+
+    /* bottom bar */
+    .bot{display:flex;gap:1px;background:var(--border);border-top:1px solid var(--border);}
+    .bc{flex:1;background:var(--bg2);padding:11px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;}
+    .bc-l{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:2px;text-align:center;}
+    .bc-v{font-family:var(--mono);font-size:14px;font-weight:600;}
+    @media(max-width:480px){.bc-v{font-size:11px;}.bc-l{font-size:7px;}}
+  </style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="L-t">DUKE 390</div>
+  <div class="L-s">TELEMETRY ANALYZER</div>
+  <div class="L-hr"></div>
+  <div class="L-d">Carica il JSON della sessione per analizzare tutti i canali di telemetria</div>
+  <button class="Lb" onclick="document.getElementById('fi').click()">&#9654;&nbsp; CARICA SESSIONE</button>
+  <button class="Ld" onclick="startSession(DEMO)">DEMO</button>
+  <input type="file" id="fi" accept=".json" onchange="onFile(event)">
+</div>
+
+<div id="app">
+  <div class="sticky-top">
+    <header>
+      <div><div class="hb">KTM</div><div class="hm">DUKE 390</div></div>
+      <div class="hs">
+        <div class="hsi"><span class="hsi-l">DURATA</span>   <span class="hsi-v" id="h0" style="color:var(--cy)">—</span></div>
+        <div class="hsi"><span class="hsi-l">V MAX</span>     <span class="hsi-v" id="h1" style="color:var(--or)">—</span></div>
+        <div class="hsi"><span class="hsi-l">RPM MAX</span>   <span class="hsi-v" id="h2" style="color:var(--pu)">—</span></div>
+        <div class="hsi"><span class="hsi-l">G LAT MAX</span> <span class="hsi-v" id="h3" style="color:var(--ye)">—</span></div>
+        <div class="hsi"><span class="hsi-l">COOLANT MAX</span><span class="hsi-v" id="h4" style="color:var(--re)">—</span></div>
+      </div>
+      <button class="hn" onclick="document.getElementById('fi').click()">&#8635; NUOVA</button>
+    </header>
+    <div class="scrub">
+      <span class="sc-l">CURSORE</span>
+      <input type="range" id="scrub" min="0" max="1000" value="0" oninput="onScrub(+this.value/1000)">
+      <span class="sc-t" id="sct">0:00.0</span>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- 1: Velocità + RPM (wide) -->
+    <div class="panel wide">
+      <div class="ph">
+        <span class="pt">VELOCITÀ · RPM</span>
+        <div class="pv">
+          <span class="pc" id="c0" style="color:var(--or)">0</span><span class="pu">km/h</span>
+          <span class="pc s" id="c1" style="color:var(--pu)">0</span><span class="pu">rpm</span>
+        </div>
+      </div>
+      <div class="pm">
+        <div class="pmi">MAX <b id="m0">—</b> km/h</div>
+        <div class="pmi">AVG <b id="m1">—</b> km/h</div>
+        <div class="pmi">RPM MAX <b id="m2">—</b></div>
+        <div class="pmi">RPM AVG <b id="m2b">—</b></div>
+      </div>
+      <div class="leg">
+        <div class="legi"><div class="legc" style="background:var(--or)"></div>VELOCITÀ</div>
+        <div class="legi"><div class="legc" style="background:var(--pu)"></div>RPM (scala destra)</div>
+      </div>
+      <div class="cc">
+        <canvas class="base" id="b0"></canvas>
+        <canvas class="over" id="o0"></canvas>
+      </div>
+    </div>
+
+    <!-- 2: Manopola vs Farfalla vs Carico -->
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">MANOPOLA · FARFALLA · CARICO</span>
+        <div class="pv">
+          <span class="pc" id="c2" style="color:var(--cy)">0</span><span class="pu">% MAN</span>
+          <span class="pc s" id="c3" style="color:var(--gn)">0</span><span class="pu">% TPS</span>
+          <span class="pc s" id="c3b" style="color:var(--ye)">0</span><span class="pu">% LOAD</span>
+        </div>
+      </div>
+      <div class="pm">
+        <div class="pmi">% PIENO GAS <b id="m3">—</b>%</div>
+        <div class="pmi">DELTA MAX <b id="m3b">—</b>% (intervento ECU)</div>
+      </div>
+      <div class="leg">
+        <div class="legi"><div class="legc" style="background:var(--cy)"></div>MANOPOLA</div>
+        <div class="legi"><div class="legc" style="background:var(--gn)"></div>TPS FARFALLA</div>
+        <div class="legi"><div class="legc" style="background:var(--ye)"></div>CARICO MOTORE</div>
+      </div>
+      <div class="cc">
+        <canvas class="base" id="b1"></canvas>
+        <canvas class="over" id="o1"></canvas>
+      </div>
+    </div>
+
+    <!-- 3: G-Force -->
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">G-FORCE</span>
+        <div class="pv">
+          <span class="pc" id="c4" style="color:var(--cy)">0.000</span><span class="pu">g LAT</span>
+          <span class="pc s" id="c5" style="color:var(--ye)">0.000</span><span class="pu">g FRONT</span>
+        </div>
+      </div>
+      <div class="pm">
+        <div class="pmi">MAX LAT <b id="m5">—</b>g</div>
+        <div class="pmi">MAX FRONT <b id="m6">—</b>g</div>
+      </div>
+      <div class="leg">
+        <div class="legi"><div class="legc" style="background:var(--cy)"></div>LATERALE</div>
+        <div class="legi"><div class="legc" style="background:var(--ye)"></div>FRONTALE</div>
+      </div>
+      <div class="cc">
+        <canvas class="base" id="b2"></canvas>
+        <canvas class="over" id="o2"></canvas>
+      </div>
+    </div>
+
+    <!-- 4: TPMS -->
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">PRESSIONE GOMME</span>
+        <div class="pv">
+          <span class="pc" id="c6" style="color:var(--cy)">—</span><span class="pu">bar ANT</span>
+          <span class="pc s" id="c7" style="color:var(--ow)">—</span><span class="pu">bar POST</span>
+        </div>
+      </div>
+      <div class="pm">
+        <div class="pmi">T° ANT <b id="m7">—</b>°C</div>
+        <div class="pmi">T° POST <b id="m8">—</b>°C</div>
+      </div>
+      <div class="leg">
+        <div class="legi"><div class="legc" style="background:var(--cy)"></div>ANTERIORE</div>
+        <div class="legi"><div class="legc" style="background:var(--ow)"></div>POSTERIORE</div>
+      </div>
+      <div class="cc">
+        <canvas class="base" id="b3"></canvas>
+        <canvas class="over" id="o3"></canvas>
+      </div>
+    </div>
+
+    <!-- 5: Temperature motore -->
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">TEMPERATURE · ANTICIPO</span>
+        <div class="pv">
+          <span class="pc" id="c8" style="color:var(--re)">—</span><span class="pu">°C COOL</span>
+          <span class="pc s" id="c9" style="color:var(--ye)">—</span><span class="pu">°C IAT</span>
+          <span class="pc s" id="c9b" style="color:var(--pu)">—</span><span class="pu">° IGN</span>
+        </div>
+      </div>
+      <div class="pm">
+        <div class="pmi">COOLANT MAX <b id="m9">—</b>°C</div>
+        <div class="pmi">IAT AVG <b id="m10">—</b>°C</div>
+        <div class="pmi">IGN AVG <b id="m11">—</b>°</div>
+      </div>
+      <div class="leg">
+        <div class="legi"><div class="legc" style="background:var(--re)"></div>COOLANT</div>
+        <div class="legi"><div class="legc" style="background:var(--ye)"></div>IAT</div>
+        <div class="legi"><div class="legc" style="background:var(--pu)"></div>ANTICIPO (scala destra)</div>
+      </div>
+      <div class="cc">
+        <canvas class="base" id="b4"></canvas>
+        <canvas class="over" id="o4"></canvas>
+      </div>
+    </div>
+
+    <!-- 6: Carburante + MAP + Fuel Trim -->
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">CARBURANTE · MAP · TRIM</span>
+        <div class="pv">
+          <span class="pc" id="c10" style="color:var(--ow)">—</span><span class="pu">L/100</span>
+          <span class="pc s" id="c10b" style="color:var(--gn)">—</span><span class="pu">kPa MAP</span>
+          <span class="pc s" id="c10c" style="color:var(--cy)">—</span><span class="pu">% TRIM</span>
+        </div>
+      </div>
+      <div class="pm">
+        <div class="pmi">CONSUMO MAX <b id="m12">—</b> L/100</div>
+        <div class="pmi">CONSUMO AVG <b id="m13">—</b> L/100</div>
+        <div class="pmi">MAP MAX <b id="m14">—</b> kPa</div>
+      </div>
+      <div class="leg">
+        <div class="legi"><div class="legc" style="background:var(--ow)"></div>CONSUMO</div>
+        <div class="legi"><div class="legc" style="background:var(--gn)"></div>MAP kPa</div>
+        <div class="legi"><div class="legc" style="background:var(--cy)"></div>FUEL TRIM %</div>
+      </div>
+      <div class="cc">
+        <canvas class="base" id="b5"></canvas>
+        <canvas class="over" id="o5"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="bot">
+    <div class="bc"><span class="bc-l">DISTANZA EST.</span> <span class="bc-v" id="bt0" style="color:var(--cy)">—</span></div>
+    <div class="bc"><span class="bc-l">FRAMES</span>        <span class="bc-v" id="bt1" style="color:var(--dim)">—</span></div>
+    <div class="bc"><span class="bc-l">FREQUENZA</span>     <span class="bc-v" id="bt2" style="color:var(--dim)">—</span></div>
+    <div class="bc"><span class="bc-l">G LAT MAX</span>     <span class="bc-v" id="bt3" style="color:var(--ye)">—</span></div>
+    <div class="bc"><span class="bc-l">% PIENO GAS</span>   <span class="bc-v" id="bt4" style="color:var(--gn)">—</span></div>
+    <div class="bc"><span class="bc-l">BATTERIA</span>      <span class="bc-v" id="bt5" style="color:var(--ow)">—</span></div>
+    <div class="bc"><span class="bc-l">DTC · MIL</span>     <span class="bc-v" id="bt6">—</span></div>
+  </div>
+</div>
+
+<script>
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const DPR = window.devicePixelRatio || 1;
+  const PAD = 10;
+
+  function gv(obj, path, fb) {
+    try {
+      let v = obj;
+      for (const k of path.split('.')) v = v[k];
+      return (v != null && isFinite(+v)) ? +v : (fb != null ? fb : 0);
+    } catch(e) { return fb != null ? fb : 0; }
+  }
+
+  const avg  = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
+  const MAX  = a => a.reduce((m,v)=>v>m?v:m, -Infinity);
+  const MIN  = a => a.reduce((m,v)=>v<m?v:m,  Infinity);
+  const f1   = v => (+v).toFixed(1);
+  const f2   = v => (+v).toFixed(2);
+  const f3   = v => (+v).toFixed(3);
+  const fi   = v => Math.round(+v).toString();
+  const tsMs = f => new Date(f.timestamp.replace(' ','T')).getTime();
+
+  let F = [], CH = {}, curPct = 0;
+  const canvases = {};
+
+  // ── file ──────────────────────────────────────────────────────
+  function onFile(e) {
+    const file = e.target.files[0]; if (!file) return;
+    e.target.value = '';
+    const r = new FileReader();
+    r.onload = ev => {
+      let d; try { d = JSON.parse(ev.target.result); } catch(err) { alert('JSON non valido: '+err); return; }
+      startSession(d);
+    };
+    r.readAsText(file);
+  }
+
+  function startSession(raw) {
+    F = raw.filter(f => f && f.obd);
+    if (!F.length) { alert('Nessun frame valido'); return; }
+    buildChannels();
+    computeStats();
+    $('loader').style.display = 'none';
+    $('app').classList.add('on');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      initCanvases();
+      drawBases();
+      onScrub(0);
+    }));
+  }
+
+  // ── canali — nomi allineati al SessionLogger.kt ───────────────
+  function buildChannels() {
+    CH.speed  = F.map(f => gv(f,'obd.speed_kmh',0));
+    CH.rpm    = F.map(f => gv(f,'obd.rpm',0));
+    CH.accel  = F.map(f => gv(f,'obd.accel_pedal_pct',0));   // manopola gas
+    CH.tps    = F.map(f => gv(f,'obd.tps_pct',0));            // farfalla
+    CH.load   = F.map(f => gv(f,'obd.engine_load_pct',0));
+    CH.glat   = F.map(f => gv(f,'sensors.g_lateral',0));
+    CH.gfr    = F.map(f => gv(f,'sensors.g_front',0));
+    CH.pant   = F.map(f => { const v=gv(f,'tpms_ant.pressure_bar',null); return v>0?v:null; });
+    CH.ppost  = F.map(f => { const v=gv(f,'tpms_post.pressure_bar',null); return v>0?v:null; });
+    CH.tant   = F.map(f => gv(f,'tpms_ant.temp_c',null));
+    CH.tpost  = F.map(f => gv(f,'tpms_post.temp_c',null));
+    CH.cool   = F.map(f => gv(f,'obd.coolant_temp_c',0));     // era oil_temp_c — CORRETTO
+    CH.iat    = F.map(f => gv(f,'obd.iat_c',0));
+    CH.ign    = F.map(f => gv(f,'obd.ignition_advance_deg',0)); // era afr — CORRETTO
+    CH.fuel   = F.map(f => Math.min(gv(f,'obd.fuel_l100',0), 60));
+    CH.map    = F.map(f => gv(f,'obd.map_kpa',0));
+    CH.trim   = F.map(f => gv(f,'obd.fuel_trim_pct',0));
+    CH.volt   = F.map(f => gv(f,'obd.battery_voltage',0));
+    CH.dtc    = F.map(f => gv(f,'obd.dtc_count',0));
+    CH.mil    = F.map(f => f.obd && f.obd.mil_on === true);
+  }
+
+  // ── stats ──────────────────────────────────────────────────────
+  function computeStats() {
+    const n = F.length;
+    const dur = (tsMs(F[n-1]) - tsMs(F[0])) / 1000;
+    const mm = Math.floor(dur/60).toString().padStart(2,'0');
+    const ss = (dur%60).toFixed(1).padStart(4,'0');
+
+    let dist = 0;
+    for (let i=1;i<n;i++) {
+      const dt = (tsMs(F[i])-tsMs(F[i-1]))/3600000;
+      dist += ((CH.speed[i]+CH.speed[i-1])/2)*dt;
+    }
+
+    const wot      = CH.tps.filter(v=>v>80).length/n*100;
+    const freq     = n/dur;
+    const glatMax  = MAX(CH.glat.map(Math.abs));
+    const gfrMax   = MAX(CH.gfr.map(Math.abs));
+    const tantV    = CH.tant.filter(v=>v!=null&&v>0);
+    const tpostV   = CH.tpost.filter(v=>v!=null&&v>0);
+    const fuelV    = CH.fuel.filter(v=>v>0&&v<50);
+    const mapV     = CH.map.filter(v=>v>0);
+    const voltV    = CH.volt.filter(v=>v>5);
+    const milAny   = CH.mil.some(v=>v);
+    const dtcMax   = MAX(CH.dtc);
+
+    // delta manopola vs farfalla — misura intervento ECU
+    const deltas   = CH.accel.map((a,i) => Math.abs(a - CH.tps[i]));
+    const deltaMax = MAX(deltas);
+
+    // header
+    $('h0').textContent = mm+':'+ss;
+    $('h1').textContent = fi(MAX(CH.speed))+' km/h';
+    $('h2').textContent = fi(MAX(CH.rpm));
+    $('h3').textContent = f3(glatMax)+'g';
+    $('h4').textContent = f1(MAX(CH.cool))+'°C';
+
+    // pannello 1
+    $('m0').textContent  = fi(MAX(CH.speed));
+    $('m1').textContent  = f1(avg(CH.speed));
+    $('m2').textContent  = fi(MAX(CH.rpm));
+    $('m2b').textContent = fi(avg(CH.rpm));
+
+    // pannello 2
+    $('m3').textContent  = f1(wot);
+    $('m3b').textContent = f1(deltaMax);
+
+    // pannello 3
+    $('m5').textContent = f3(glatMax);
+    $('m6').textContent = f3(gfrMax);
+
+    // pannello 4
+    $('m7').textContent = tantV.length  ? f1(avg(tantV))  : '—';
+    $('m8').textContent = tpostV.length ? f1(avg(tpostV)) : '—';
+
+    // pannello 5
+    $('m9').textContent  = f1(MAX(CH.cool));
+    $('m10').textContent = f1(avg(CH.iat));
+    $('m11').textContent = f1(avg(CH.ign));
+
+    // pannello 6
+    $('m12').textContent = f1(MAX(CH.fuel));
+    $('m13').textContent = fuelV.length ? f1(avg(fuelV)) : '—';
+    $('m14').textContent = mapV.length  ? fi(MAX(mapV))  : '—';
+
+    // bottom
+    $('bt0').textContent = f2(dist)+' km';
+    $('bt1').textContent = n;
+    $('bt2').textContent = f1(freq)+' Hz';
+    $('bt3').textContent = f3(glatMax)+'g';
+    $('bt4').textContent = f1(wot)+'%';
+    $('bt5').textContent = voltV.length ? f1(avg(voltV))+'V' : '—';
+
+    const milEl = $('bt6');
+    if (milAny) {
+      milEl.innerHTML = `<span class="mil-on">MIL ON</span> <span style="color:var(--re)">${dtcMax} DTC</span>`;
+    } else {
+      milEl.innerHTML = `<span class="mil-off">OK</span>`;
+    }
+  }
+
+  // ── canvas init ────────────────────────────────────────────────
+  function initCanvases() {
+    [0,1,2,3,4,5].forEach(i => {
+      const bc = $('b'+i), oc = $('o'+i);
+      const cc = bc.parentElement;
+      const W = cc.clientWidth, H = cc.clientHeight;
+      [bc, oc].forEach(cv => {
+        cv.width  = W * DPR;
+        cv.height = H * DPR;
+        const ctx = cv.getContext('2d');
+        ctx.scale(DPR, DPR);
+      });
+      canvases[i] = { base: bc, over: oc, W, H };
+    });
+  }
+
+  // ── primitives ─────────────────────────────────────────────────
+  function yp(v, vmin, vmax, H) {
+    const t = vmax===vmin ? 0.5 : Math.max(0,Math.min(1,(v-vmin)/(vmax-vmin)));
+    return PAD + (1-t)*(H-PAD*2);
+  }
+
+  function drawLine(ctx, data, W, H, vmin, vmax, color, lw) {
+    const n = data.length; if (n<2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color; ctx.lineWidth = lw||1.5;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (let i=0;i<n;i++) {
+      const x = i/(n-1)*W, y = yp(data[i],vmin,vmax,H);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  function drawFill(ctx, data, W, H, vmin, vmax, color) {
+    const n = data.length; if (n<2) return;
+    const r=parseInt(color.slice(1,3),16), g=parseInt(color.slice(3,5),16), b=parseInt(color.slice(5,7),16);
+    ctx.beginPath();
+    for (let i=0;i<n;i++) {
+      const x=i/(n-1)*W, y=yp(data[i],vmin,vmax,H);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,`rgba(${r},${g},${b},0.28)`);
+    grad.addColorStop(1,`rgba(${r},${g},${b},0.02)`);
+    ctx.fillStyle = grad; ctx.fill();
+  }
+
+  function drawGrid(ctx, W, H, vmin, vmax, steps) {
+    ctx.font = `9px 'IBM Plex Mono'`;
+    ctx.fillStyle = '#4a4d60'; ctx.textAlign = 'left';
+    for (let i=0;i<=steps;i++) {
+      const v = vmin+(vmax-vmin)*i/steps;
+      const y = yp(v,vmin,vmax,H);
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y);
+      ctx.strokeStyle='rgba(255,255,255,0.045)'; ctx.lineWidth=0.5; ctx.stroke();
+      const lbl = Math.abs(v)<0.01?v.toFixed(3):Math.abs(v)<1?v.toFixed(2):Math.abs(v)<10?v.toFixed(1):Math.round(v).toString();
+      ctx.fillText(lbl, 3, y-2);
+    }
+  }
+
+  function drawZero(ctx, W, H, vmin, vmax) {
+    if (vmin>=0) return;
+    const y = yp(0,vmin,vmax,H);
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y);
+    ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1;
+    ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Scala una serie B sull'asse visivo di una serie A (dual axis)
+  function scaleToRange(data, srcMin, srcMax, dstMin, dstMax) {
+    if (srcMax===srcMin) return data.map(()=>(dstMin+dstMax)/2);
+    return data.map(v => dstMin + (v-srcMin)/(srcMax-srcMin)*(dstMax-dstMin));
+  }
+
+  // ── disegna basi ───────────────────────────────────────────────
+  function drawBases() {
+
+    // 0: velocità + RPM dual axis
+    {
+      const {base,W,H} = canvases[0];
+      const ctx = base.getContext('2d'); ctx.clearRect(0,0,W,H);
+      const smax = Math.max(MAX(CH.speed),10);
+      const rmax = Math.max(MAX(CH.rpm),100);
+      const rpmS = CH.rpm.map(v => v/rmax*smax);
+      drawGrid(ctx,W,H,0,smax,4);
+      drawFill(ctx,CH.speed,W,H,0,smax,'#ff5500');
+      drawLine(ctx,CH.speed,W,H,0,smax,'#ff5500',2);
+      drawLine(ctx,rpmS,W,H,0,smax,'#9f7aff',1.5);
+    }
+
+    // 1: manopola vs farfalla vs carico
+    {
+      const {base,W,H} = canvases[1];
+      const ctx = base.getContext('2d'); ctx.clearRect(0,0,W,H);
+      drawGrid(ctx,W,H,0,100,4);
+      // area di differenza manopola-farfalla come fill semitrasparente
+      const accelV = CH.accel.some(v=>v>0) ? CH.accel : CH.tps; // fallback se accel non disponibile
+      drawFill(ctx,accelV,W,H,0,100,'#00c8e0');
+      drawLine(ctx,accelV,W,H,0,100,'#00c8e0',2);
+      drawLine(ctx,CH.tps,W,H,0,100,'#00d47a',2);
+      drawLine(ctx,CH.load,W,H,0,100,'#f0c040',1.5);
+    }
+
+    // 2: G-force
+    {
+      const {base,W,H} = canvases[2];
+      const ctx = base.getContext('2d'); ctx.clearRect(0,0,W,H);
+      const all = CH.glat.concat(CH.gfr);
+      const gmin = Math.min(MIN(all),-0.01)*1.2;
+      const gmax = Math.max(MAX(all), 0.01)*1.2;
+      drawGrid(ctx,W,H,gmin,gmax,4);
+      drawZero(ctx,W,H,gmin,gmax);
+      drawFill(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0');
+      drawLine(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0',2);
+      drawLine(ctx,CH.gfr, W,H,gmin,gmax,'#f0c040',1.5);
+    }
+
+    // 3: TPMS pressione
+    {
+      const {base,W,H} = canvases[3];
+      const ctx = base.getContext('2d'); ctx.clearRect(0,0,W,H);
+      const pv = CH.pant.concat(CH.ppost).filter(v=>v!=null);
+      if (pv.length < 2) {
+        ctx.fillStyle='#52556a'; ctx.font="11px 'IBM Plex Mono'";
+        ctx.fillText('dati TPMS non disponibili', 8, H/2);
+      } else {
+        const pmin=MIN(pv)*0.98, pmax=MAX(pv)*1.02;
+        const antF  = CH.pant.map(v  => v!=null?v:pmin);
+        const postF = CH.ppost.map(v => v!=null?v:pmin);
+        drawGrid(ctx,W,H,pmin,pmax,4);
+        drawFill(ctx,antF, W,H,pmin,pmax,'#00c8e0');
+        drawLine(ctx,antF, W,H,pmin,pmax,'#00c8e0',2);
+        drawLine(ctx,postF,W,H,pmin,pmax,'#ff8800',1.5);
+      }
+    }
+
+    // 4: coolant + IAT + anticipo accensione (dual axis)
+    {
+      const {base,W,H} = canvases[4];
+      const ctx = base.getContext('2d'); ctx.clearRect(0,0,W,H);
+      const temps   = CH.cool.concat(CH.iat);
+      const tmin    = MIN(temps)*0.97, tmax = MAX(temps)*1.03;
+      const ignMin  = MIN(CH.ign), ignMax = MAX(CH.ign);
+      const ignS    = scaleToRange(CH.ign, ignMin, ignMax, tmin, tmax);
+      drawGrid(ctx,W,H,tmin,tmax,4);
+      drawFill(ctx,CH.cool,W,H,tmin,tmax,'#ff3348');
+      drawLine(ctx,CH.cool,W,H,tmin,tmax,'#ff3348',2);
+      drawLine(ctx,CH.iat, W,H,tmin,tmax,'#f0c040',1.5);
+      drawLine(ctx,ignS,   W,H,tmin,tmax,'#9f7aff',1.5);
+    }
+
+    // 5: consumo + MAP (dual axis) + fuel trim
+    {
+      const {base,W,H} = canvases[5];
+      const ctx = base.getContext('2d'); ctx.clearRect(0,0,W,H);
+      const fmax   = Math.max(MAX(CH.fuel),2)*1.05;
+      const mapMax = Math.max(MAX(CH.map),10);
+      const mapS   = scaleToRange(CH.map,0,mapMax,0,fmax);
+      const trimMin = Math.min(MIN(CH.trim),-5)*1.2;
+      const trimMax = Math.max(MAX(CH.trim), 5)*1.2;
+      // trim ha zero crossing — lo scala sull'asse consumo
+      const trimS  = scaleToRange(CH.trim,trimMin,trimMax,0,fmax);
+      drawGrid(ctx,W,H,0,fmax,4);
+      drawFill(ctx,CH.fuel,W,H,0,fmax,'#ff8800');
+      drawLine(ctx,CH.fuel,W,H,0,fmax,'#ff8800',2);
+      drawLine(ctx,mapS,   W,H,0,fmax,'#00d47a',1.5);
+      drawLine(ctx,trimS,  W,H,0,fmax,'#00c8e0',1.5);
+    }
+  }
+
+  // ── cursore overlay ────────────────────────────────────────────
+  function drawCursors(pct) {
+    [0,1,2,3,4,5].forEach(i => {
+      const {over,W,H} = canvases[i];
+      const ctx = over.getContext('2d');
+      ctx.clearRect(0,0,W,H);
+      const x = pct*W;
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H);
+      ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1;
+      ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+    });
+
+    function dot(i, series, vmin, vmax, color) {
+      const {over,W,H} = canvases[i];
+      const ctx = over.getContext('2d');
+      const idx = Math.min(series.length-1, Math.round(pct*(series.length-1)));
+      const v = series[idx]; if (v==null) return;
+      const x = pct*W, y = yp(v,vmin,vmax,H);
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.fillStyle=color; ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1; ctx.stroke();
+    }
+
+    const smax   = Math.max(MAX(CH.speed),10);
+    dot(0, CH.speed, 0, smax, '#ff5500');
+
+    const accelV = CH.accel.some(v=>v>0) ? CH.accel : CH.tps;
+    dot(1, accelV, 0, 100, '#00c8e0');
+    dot(1, CH.tps, 0, 100, '#00d47a');
+
+    const all  = CH.glat.concat(CH.gfr);
+    const gmin = Math.min(MIN(all),-0.01)*1.2;
+    const gmax = Math.max(MAX(all), 0.01)*1.2;
+    dot(2, CH.glat, gmin, gmax, '#00c8e0');
+
+    const pv = CH.pant.concat(CH.ppost).filter(v=>v!=null);
+    if (pv.length>=2) {
+      const pmin=MIN(pv)*0.98, pmax=MAX(pv)*1.02;
+      dot(3, CH.pant.map(v=>v!=null?v:pmin), pmin, pmax, '#00c8e0');
+    }
+
+    const temps = CH.cool.concat(CH.iat);
+    dot(4, CH.cool, MIN(temps)*0.97, MAX(temps)*1.03, '#ff3348');
+
+    const fmax = Math.max(MAX(CH.fuel),2)*1.05;
+    dot(5, CH.fuel, 0, fmax, '#ff8800');
+  }
+
+  // ── readouts al cursore ────────────────────────────────────────
+  function updateReadouts(pct) {
+    const idx = Math.min(F.length-1, Math.round(pct*(F.length-1)));
+    const f=F[idx], ta=f.tpms_ant||{}, tp=f.tpms_post||{};
+
+    $('c0').textContent   = fi(gv(f,'obd.speed_kmh',0));
+    $('c1').textContent   = fi(gv(f,'obd.rpm',0));
+    $('c2').textContent   = f1(gv(f,'obd.accel_pedal_pct',0));
+    $('c3').textContent   = f1(gv(f,'obd.tps_pct',0));
+    $('c3b').textContent  = f1(gv(f,'obd.engine_load_pct',0));
+    $('c4').textContent   = f3(gv(f,'sensors.g_lateral',0));
+    $('c5').textContent   = f3(gv(f,'sensors.g_front',0));
+    $('c6').textContent   = ta.pressure_bar>0 ? f2(ta.pressure_bar) : '—';
+    $('c7').textContent   = tp.pressure_bar>0 ? f2(tp.pressure_bar) : '—';
+    $('c8').textContent   = f1(gv(f,'obd.coolant_temp_c',0));
+    $('c9').textContent   = f1(gv(f,'obd.iat_c',0));
+    $('c9b').textContent  = f1(gv(f,'obd.ignition_advance_deg',0));
+    $('c10').textContent  = f1(Math.min(gv(f,'obd.fuel_l100',0),60));
+    $('c10b').textContent = fi(gv(f,'obd.map_kpa',0));
+    $('c10c').textContent = f1(gv(f,'obd.fuel_trim_pct',0));
+
+    const t  = (tsMs(F[idx])-tsMs(F[0]))/1000;
+    const mm = Math.floor(t/60).toString().padStart(2,'0');
+    const ss = (t%60).toFixed(1).padStart(4,'0');
+    $('sct').textContent = mm+':'+ss;
+  }
+
+  // ── scrub ──────────────────────────────────────────────────────
+  function onScrub(pct) {
+    curPct = pct;
+    drawCursors(pct);
+    updateReadouts(pct);
+  }
+
+  // ── resize ─────────────────────────────────────────────────────
+  let rtimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(rtimer);
+    rtimer = setTimeout(() => {
+      if (!F.length) return;
+      initCanvases(); drawBases(); drawCursors(curPct);
+    }, 150);
+  });
+
+  // ── DEMO ───────────────────────────────────────────────────────
+  const DEMO=[
+  {"timestamp":"2026-04-26 12:00:00.000","tpms_ant":{"pressure_bar":2.20,"temp_c":22.0,"connected":true},"tpms_post":{"pressure_bar":2.48,"temp_c":24.0,"connected":true},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":2,"iat_c":24.5,"ignition_advance_deg":5,"fuel_l100":2.0,"fuel_trim_pct":0,"coolant_temp_c":65.0,"map_kpa":32,"battery_voltage":12.8,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":1000,"connected":true},"sensors":{"g_lateral":0,"g_front":0}},
+  {"timestamp":"2026-04-26 12:00:00.500","tpms_ant":{"pressure_bar":2.20,"temp_c":22.1,"connected":true},"tpms_post":{"pressure_bar":2.48,"temp_c":24.1,"connected":true},"obd":{"tps_pct":65,"accel_pedal_pct":80,"engine_load_pct":55,"iat_c":24.8,"ignition_advance_deg":18,"fuel_l100":8.0,"fuel_trim_pct":-2.5,"coolant_temp_c":66.0,"map_kpa":75,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":18,"rpm":3800,"connected":true},"sensors":{"g_lateral":-0.05,"g_front":-0.28}},
+  {"timestamp":"2026-04-26 12:00:01.100","tpms_ant":{"pressure_bar":2.21,"temp_c":22.3,"connected":true},"tpms_post":{"pressure_bar":2.49,"temp_c":24.3,"connected":true},"obd":{"tps_pct":88,"accel_pedal_pct":95,"engine_load_pct":78,"iat_c":25.2,"ignition_advance_deg":24,"fuel_l100":12.0,"fuel_trim_pct":-1.5,"coolant_temp_c":68.0,"map_kpa":92,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":45,"rpm":6200,"connected":true},"sensors":{"g_lateral":-0.04,"g_front":-0.35}},
+  {"timestamp":"2026-04-26 12:00:01.800","tpms_ant":{"pressure_bar":2.22,"temp_c":22.6,"connected":true},"tpms_post":{"pressure_bar":2.50,"temp_c":24.6,"connected":true},"obd":{"tps_pct":92,"accel_pedal_pct":98,"engine_load_pct":88,"iat_c":25.5,"ignition_advance_deg":28,"fuel_l100":14.5,"fuel_trim_pct":0,"coolant_temp_c":71.0,"map_kpa":98,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":78,"rpm":7800,"connected":true},"sensors":{"g_lateral":-0.03,"g_front":-0.32}},
+  {"timestamp":"2026-04-26 12:00:02.600","tpms_ant":{"pressure_bar":2.23,"temp_c":23.0,"connected":true},"tpms_post":{"pressure_bar":2.51,"temp_c":25.0,"connected":true},"obd":{"tps_pct":95,"accel_pedal_pct":100,"engine_load_pct":95,"iat_c":26.0,"ignition_advance_deg":30,"fuel_l100":16.0,"fuel_trim_pct":1.2,"coolant_temp_c":75.0,"map_kpa":101,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":115,"rpm":8800,"connected":true},"sensors":{"g_lateral":-0.02,"g_front":-0.28}},
+  {"timestamp":"2026-04-26 12:00:03.500","tpms_ant":{"pressure_bar":2.24,"temp_c":23.5,"connected":true},"tpms_post":{"pressure_bar":2.52,"temp_c":25.5,"connected":true},"obd":{"tps_pct":95,"accel_pedal_pct":100,"engine_load_pct":96,"iat_c":26.5,"ignition_advance_deg":31,"fuel_l100":16.5,"fuel_trim_pct":1.5,"coolant_temp_c":80.0,"map_kpa":102,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":148,"rpm":9200,"connected":true},"sensors":{"g_lateral":-0.01,"g_front":-0.22}},
+  {"timestamp":"2026-04-26 12:00:04.500","tpms_ant":{"pressure_bar":2.25,"temp_c":24.0,"connected":true},"tpms_post":{"pressure_bar":2.53,"temp_c":26.0,"connected":true},"obd":{"tps_pct":90,"accel_pedal_pct":100,"engine_load_pct":97,"iat_c":27.0,"ignition_advance_deg":32,"fuel_l100":17.0,"fuel_trim_pct":2.0,"coolant_temp_c":86.0,"map_kpa":103,"battery_voltage":13.9,"dtc_count":0,"mil_on":false,"speed_kmh":172,"rpm":9350,"connected":true},"sensors":{"g_lateral":0,"g_front":-0.18}},
+  {"timestamp":"2026-04-26 12:00:05.200","tpms_ant":{"pressure_bar":2.26,"temp_c":24.5,"connected":true},"tpms_post":{"pressure_bar":2.54,"temp_c":26.5,"connected":true},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":5,"iat_c":27.0,"ignition_advance_deg":8,"fuel_l100":3.0,"fuel_trim_pct":0,"coolant_temp_c":88.0,"map_kpa":38,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":155,"rpm":5800,"connected":true},"sensors":{"g_lateral":0,"g_front":0.55}},
+  {"timestamp":"2026-04-26 12:00:05.800","tpms_ant":{"pressure_bar":2.26,"temp_c":24.8,"connected":true},"tpms_post":{"pressure_bar":2.54,"temp_c":26.8,"connected":true},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":4,"iat_c":27.0,"ignition_advance_deg":6,"fuel_l100":2.5,"fuel_trim_pct":-1,"coolant_temp_c":89.0,"map_kpa":33,"battery_voltage":13.4,"dtc_count":0,"mil_on":false,"speed_kmh":115,"rpm":4200,"connected":true},"sensors":{"g_lateral":0,"g_front":0.68}},
+  {"timestamp":"2026-04-26 12:00:06.300","tpms_ant":{"pressure_bar":2.27,"temp_c":25.1,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.1,"connected":true},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":3,"iat_c":27.0,"ignition_advance_deg":4,"fuel_l100":2.0,"fuel_trim_pct":-0.5,"coolant_temp_c":89.5,"map_kpa":30,"battery_voltage":13.3,"dtc_count":0,"mil_on":false,"speed_kmh":72,"rpm":2800,"connected":true},"sensors":{"g_lateral":0,"g_front":0.62}},
+  {"timestamp":"2026-04-26 12:00:06.800","tpms_ant":{"pressure_bar":2.27,"temp_c":25.3,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.3,"connected":true},"obd":{"tps_pct":18,"accel_pedal_pct":20,"engine_load_pct":18,"iat_c":27.0,"ignition_advance_deg":15,"fuel_l100":5.0,"fuel_trim_pct":0,"coolant_temp_c":89.8,"map_kpa":58,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":52,"rpm":2500,"connected":true},"sensors":{"g_lateral":0.38,"g_front":0.08}},
+  {"timestamp":"2026-04-26 12:00:07.400","tpms_ant":{"pressure_bar":2.27,"temp_c":25.5,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.5,"connected":true},"obd":{"tps_pct":30,"accel_pedal_pct":35,"engine_load_pct":30,"iat_c":27.0,"ignition_advance_deg":20,"fuel_l100":5.5,"fuel_trim_pct":0.5,"coolant_temp_c":90.0,"map_kpa":68,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":55,"rpm":3000,"connected":true},"sensors":{"g_lateral":0.55,"g_front":-0.05}},
+  {"timestamp":"2026-04-26 12:00:08.000","tpms_ant":{"pressure_bar":2.27,"temp_c":25.6,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.6,"connected":true},"obd":{"tps_pct":38,"accel_pedal_pct":45,"engine_load_pct":40,"iat_c":27.0,"ignition_advance_deg":22,"fuel_l100":6.0,"fuel_trim_pct":0.8,"coolant_temp_c":90.2,"map_kpa":74,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":58,"rpm":3400,"connected":true},"sensors":{"g_lateral":0.60,"g_front":-0.08}},
+  {"timestamp":"2026-04-26 12:00:08.600","tpms_ant":{"pressure_bar":2.27,"temp_c":25.7,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.7,"connected":true},"obd":{"tps_pct":58,"accel_pedal_pct":70,"engine_load_pct":60,"iat_c":27.0,"ignition_advance_deg":26,"fuel_l100":8.5,"fuel_trim_pct":1.5,"coolant_temp_c":90.5,"map_kpa":88,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":72,"rpm":4800,"connected":true},"sensors":{"g_lateral":0.30,"g_front":-0.15}},
+  {"timestamp":"2026-04-26 12:00:09.300","tpms_ant":{"pressure_bar":2.27,"temp_c":25.8,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.8,"connected":true},"obd":{"tps_pct":72,"accel_pedal_pct":88,"engine_load_pct":80,"iat_c":27.0,"ignition_advance_deg":29,"fuel_l100":11.0,"fuel_trim_pct":2.0,"coolant_temp_c":91.0,"map_kpa":96,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":95,"rpm":6500,"connected":true},"sensors":{"g_lateral":0.05,"g_front":-0.22}},
+  {"timestamp":"2026-04-26 12:00:10.100","tpms_ant":{"pressure_bar":2.27,"temp_c":25.9,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":27.9,"connected":true},"obd":{"tps_pct":10,"accel_pedal_pct":15,"engine_load_pct":12,"iat_c":27.0,"ignition_advance_deg":10,"fuel_l100":4.0,"fuel_trim_pct":0,"coolant_temp_c":91.2,"map_kpa":45,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":88,"rpm":4200,"connected":true},"sensors":{"g_lateral":-0.42,"g_front":0.10}},
+  {"timestamp":"2026-04-26 12:00:10.700","tpms_ant":{"pressure_bar":2.27,"temp_c":26.0,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.0,"connected":true},"obd":{"tps_pct":25,"accel_pedal_pct":30,"engine_load_pct":28,"iat_c":27.0,"ignition_advance_deg":17,"fuel_l100":5.5,"fuel_trim_pct":-0.5,"coolant_temp_c":91.5,"map_kpa":65,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":82,"rpm":4000,"connected":true},"sensors":{"g_lateral":-0.58,"g_front":-0.05}},
+  {"timestamp":"2026-04-26 12:00:11.300","tpms_ant":{"pressure_bar":2.27,"temp_c":26.1,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.1,"connected":true},"obd":{"tps_pct":32,"accel_pedal_pct":40,"engine_load_pct":36,"iat_c":27.0,"ignition_advance_deg":21,"fuel_l100":6.0,"fuel_trim_pct":-1.0,"coolant_temp_c":91.8,"map_kpa":70,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":78,"rpm":3800,"connected":true},"sensors":{"g_lateral":-0.60,"g_front":-0.08}},
+  {"timestamp":"2026-04-26 12:00:12.000","tpms_ant":{"pressure_bar":2.27,"temp_c":26.2,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.2,"connected":true},"obd":{"tps_pct":60,"accel_pedal_pct":75,"engine_load_pct":68,"iat_c":27.0,"ignition_advance_deg":27,"fuel_l100":9.5,"fuel_trim_pct":1.0,"coolant_temp_c":92.0,"map_kpa":90,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":92,"rpm":5800,"connected":true},"sensors":{"g_lateral":-0.28,"g_front":-0.18}},
+  {"timestamp":"2026-04-26 12:00:12.800","tpms_ant":{"pressure_bar":2.27,"temp_c":26.3,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.3,"connected":true},"obd":{"tps_pct":78,"accel_pedal_pct":92,"engine_load_pct":88,"iat_c":27.0,"ignition_advance_deg":31,"fuel_l100":13.0,"fuel_trim_pct":2.5,"coolant_temp_c":92.5,"map_kpa":99,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":118,"rpm":8200,"connected":true},"sensors":{"g_lateral":-0.05,"g_front":-0.25}},
+  {"timestamp":"2026-04-26 12:00:13.600","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"connected":true},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":3,"iat_c":27.0,"ignition_advance_deg":5,"fuel_l100":1.8,"fuel_trim_pct":0,"coolant_temp_c":92.8,"map_kpa":31,"battery_voltage":13.4,"dtc_count":0,"mil_on":false,"speed_kmh":95,"rpm":3200,"connected":true},"sensors":{"g_lateral":0,"g_front":0.48}},
+  {"timestamp":"2026-04-26 12:00:14.200","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"connected":true},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":2,"iat_c":27.0,"ignition_advance_deg":3,"fuel_l100":1.5,"fuel_trim_pct":-0.5,"coolant_temp_c":93.0,"map_kpa":28,"battery_voltage":13.3,"dtc_count":0,"mil_on":false,"speed_kmh":45,"rpm":1800,"connected":true},"sensors":{"g_lateral":0,"g_front":0.35}},
+  {"timestamp":"2026-04-26 12:00:14.800","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"connected":true},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"connected":true},"obd":{"tps_pct":2,"accel_pedal_pct":2,"engine_load_pct":2,"iat_c":27.0,"ignition_advance_deg":2,"fuel_l100":2.2,"fuel_trim_pct":0,"coolant_temp_c":93.0,"map_kpa":30,"battery_voltage":12.8,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":1050,"connected":true},"sensors":{"g_lateral":0,"g_front":0}}
+  ];
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Duke 390</string>
+
+    <string name="label_tpms">● TPMS</string>
+    <string name="label_obd2">OBD2 ●</string>
+
+    <string name="label_anteriore">FRONT</string>
+    <string name="label_posteriore">REAR</string>
+
+    <string name="press_alarm">ALARM</string>
+    <string name="press_low">low</string>
+    <string name="press_high">high</string>
+    <string name="press_ok">ok</string>
+
+    <string name="temp_cold">cold</string>
+    <string name="temp_warming">warming</string>
+    <string name="temp_hot">hot</string>
+
+    <string name="label_tps">THROTTLE (TPS)</string>
+    <string name="label_load">ENGINE LOAD</string>
+    <string name="label_iat">INTAKE AIR TEMP</string>
+    <string name="label_ignition">IGNITION ADV</string>
+    <string name="label_consume">CONSUMPTION</string>
+    <string name="label_fuel_trim">FUEL TRIM</string>
+    <string name="label_coolant">COOLANT TEMP</string>
+    <string name="label_g_lateral">LATERAL G</string>
+
+    <string name="ign_low">low</string>
+    <string name="ign_ok">normal</string>
+    <string name="ign_high">high</string>
+
+    <string name="trim_rich">rich</string>
+    <string name="trim_lean">lean</string>
+    <string name="trim_ok">ok</string>
+
+    <string name="coolant_cold">cold</string>
+    <string name="coolant_ok">in range</string>
+    <string name="coolant_hot">hot</string>
+
+    <string name="label_speed_max">MAX SPEED</string>
+    <string name="label_rpm_max">MAX RPM</string>
+    <string name="label_load_max">MAX LOAD</string>
+
+    <string name="na">N/A</string>
+    <string name="dash">—</string>
+
+    <string name="settings_title">SETTINGS</string>
+    <string name="settings_tpms">TPMS SENSORS</string>
+    <string name="settings_id_ant">Front ID</string>
+    <string name="settings_id_ant_hint">e.g. 13912F</string>
+    <string name="settings_id_post">Rear ID</string>
+    <string name="settings_id_post_hint">e.g. 238D2A</string>
+    <string name="settings_obd">OBD2 BLUETOOTH</string>
+    <string name="settings_devices">Paired devices</string>
+    <string name="settings_moto_mode">Bike mode (auto-start on power)</string>
+    <string name="settings_sim_mode">Simulation mode</string>
+    <string name="settings_g_offset">LATERAL G — OFFSET</string>
+    <string name="settings_g_offset_value">offset: 0.00 G</string>
+    <string name="btn_set_offset">SET OFFSET</string>
+    <string name="btn_offset_saved">✓ SAVED</string>
+    <string name="settings_telemetry">TELEMETRY RECORDING</string>
+    <string name="log_inactive">● inactive</string>
+    <string name="log_recording">● recording</string>
+    <string name="btn_start">START</string>
+    <string name="btn_stop">STOP</string>
+    <string name="btn_open_analyzer">OPEN TELEMETRY ANALYZER</string>
+    <string name="btn_exit">EXIT</string>
+    <string name="btn_cancel">CANCEL</string>
+    <string name="btn_save">SAVE</string>
+    <string name="settings_language">LANGUAGE</string>
+    <string name="lang_system">System</string>
+    <string name="lang_italian">Italiano</string>
+    <string name="lang_english">English</string>
+
+    <string name="notif_channel_name">Duke 390 Dash</string>
+    <string name="notif_channel_desc">Dashboard active</string>
+    <string name="notif_title">Duke 390 Dash</string>
+    <string name="notif_text">Dashboard active</string>
+
+</resources>
