@@ -32,24 +32,24 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: DashViewModel by viewModels()
 
     // ── Service binding ───────────────────────────────────────────────────────
-    // GPS, GSensor e SessionLogger vivono nel service, non nell'Activity.
     private var dashService: DashForegroundService? = null
     private var serviceBound = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-            dashService = (binder as DashForegroundService.LocalBinder).getService()
+            dashService  = (binder as DashForegroundService.LocalBinder).getService()
             serviceBound = true
+            notifyTile()
         }
         override fun onServiceDisconnected(name: ComponentName) {
-            dashService = null
+            dashService  = null
             serviceBound = false
         }
     }
 
     private var sweepDone = false
 
-    // Riceve il comando toggle dal tile del pannello rapido
+    // ── Tile receiver ─────────────────────────────────────────────────────────
     private val tileReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
             if (intent.action == DashTileService.ACTION_TOGGLE_LOG) {
@@ -60,16 +60,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ── Permessi ──────────────────────────────────────────────────────────────
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val bleOk = permissions[android.Manifest.permission.BLUETOOTH_SCAN] == true &&
-                permissions[android.Manifest.permission.BLUETOOTH_CONNECT] == true
+                    permissions[android.Manifest.permission.BLUETOOTH_CONNECT] == true
         val gpsOk = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
         if (bleOk && gpsOk) {
             AppLog.init(this)
-            viewModel.init(this)
-            // Il GPS è già avviato nel service — nessuna azione aggiuntiva necessaria
+            // I manager sono già avviati nel service — nessuna init aggiuntiva
         }
     }
 
@@ -83,7 +83,6 @@ class MainActivity : AppCompatActivity() {
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
 
-        // Avvia e lega il service
         DashForegroundService.start(this)
         bindService(
             Intent(this, DashForegroundService::class.java),
@@ -117,23 +116,18 @@ class MainActivity : AppCompatActivity() {
             android.Manifest.permission.POST_NOTIFICATIONS
         ))
 
-        binding.root.setOnLongClickListener {
-            showSettingsDialog()
-            true
-        }
+        binding.root.setOnLongClickListener { showSettingsDialog(); true }
 
-        // ── Collezione stato OBD/TPMS — aggiorna UI e passa lo stato al service ─
+        // ── Collect dashState dal ViewModel (che espone il companion StateFlow) ─
         lifecycleScope.launch {
             viewModel.dashState.collect { state ->
-                // Passa lo stato al service per il loop di log (non scriviamo qui)
-                dashService?.updateDashState(state)
                 if (sweepDone) updateUI(state)
             }
         }
 
-        // ── G laterale per la UI — arriva dal service via StateFlow ──────────
+        // ── Collect gLateral per la UI ────────────────────────────────────────
         lifecycleScope.launch {
-            DashForegroundService.gLateralFlow.collect { gLateral ->
+            viewModel.gLateral.collect { gLateral ->
                 runOnUiThread { updateGSensor(gLateral) }
             }
         }
@@ -232,10 +226,10 @@ class MainActivity : AppCompatActivity() {
         val na   = getString(R.string.na)
         val dash = getString(R.string.dash)
 
-        val antOk   = state.tpmsAnt.pressureBar  > 0f && !state.tpmsAnt.staleWarning
-        val postOk  = state.tpmsPost.pressureBar > 0f && !state.tpmsPost.staleWarning
-        val antSeen = state.tpmsAnt.pressureBar  > 0f
-        val postSeen= state.tpmsPost.pressureBar > 0f
+        val antOk    = state.tpmsAnt.pressureBar  > 0f && !state.tpmsAnt.staleWarning
+        val postOk   = state.tpmsPost.pressureBar > 0f && !state.tpmsPost.staleWarning
+        val antSeen  = state.tpmsAnt.pressureBar  > 0f
+        val postSeen = state.tpmsPost.pressureBar > 0f
         binding.spiaTpms.setTextColor(when {
             antOk && postOk     -> 0xFF00CC44.toInt()
             antSeen || postSeen -> 0xFFEF9F27.toInt()
@@ -385,16 +379,12 @@ class MainActivity : AppCompatActivity() {
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
-    // Il GSensor ora vive nel service — onResume/onPause non lo toccano più
     override fun onResume()  { super.onResume();  notifyTile() }
     override fun onPause()   { super.onPause() }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (serviceBound) {
-            unbindService(serviceConnection)
-            serviceBound = false
-        }
+        if (serviceBound) { unbindService(serviceConnection); serviceBound = false }
         AppLog.close()
         try { unregisterReceiver(tileReceiver) } catch (_: Exception) {}
         DashTileService.updateTile(this, running = false, logging = false)
@@ -420,7 +410,7 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
         val prefs       = getSharedPreferences(DashViewModel.PREFS_NAME, MODE_PRIVATE)
-        val savedIdAnt  = prefs.getString(DashViewModel.PREF_ID_ANT, "") ?: ""
+        val savedIdAnt  = prefs.getString(DashViewModel.PREF_ID_ANT,  "") ?: ""
         val savedIdPost = prefs.getString(DashViewModel.PREF_ID_POST, "") ?: ""
         val editIdAnt       = dialogView.findViewById<android.widget.EditText>(R.id.editIdAnt)
         val editIdPost      = dialogView.findViewById<android.widget.EditText>(R.id.editIdPost)
@@ -452,7 +442,6 @@ class MainActivity : AppCompatActivity() {
 
         updateLogStatus(txtLogStatus, btnToggleLog)
 
-        // Offset G-sensor — ora delegato al service
         val svc = dashService
         txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
         btnSetOffset.setOnClickListener {
@@ -471,15 +460,15 @@ class MainActivity : AppCompatActivity() {
         dialogView.findViewById<android.widget.Button>(R.id.btnShowLog).setOnClickListener {
             showLogDialog()
         }
-
         dialogView.findViewById<android.widget.Button>(R.id.btnOpenAnalyzer).setOnClickListener {
             dialog.dismiss()
             startActivity(android.content.Intent(this, AnalyzerActivity::class.java))
         }
-
         dialogView.findViewById<android.widget.Button>(R.id.btnExit).setOnClickListener {
-            dialog.dismiss(); DashForegroundService.stop(this)
-            SplashActivity.splashShown = false; finishAffinity()
+            dialog.dismiss()
+            DashForegroundService.stop(this)
+            SplashActivity.splashShown = false
+            finishAffinity()
         }
         dialogView.findViewById<android.widget.Button>(R.id.btnCancel).setOnClickListener {
             dialog.dismiss()
@@ -487,7 +476,7 @@ class MainActivity : AppCompatActivity() {
         dialogView.findViewById<android.widget.Button>(R.id.btnSave).setOnClickListener {
             val idAnt  = editIdAnt.text.toString().trim().uppercase()
             val idPost = editIdPost.text.toString().trim().uppercase()
-            viewModel.saveSettings(this, idAnt, idPost)
+            viewModel.saveSettings(this, idAnt, idPost, dashService)
             prefs.edit().putBoolean(DashViewModel.PREF_MOTO_MODE, switchMoto.isChecked).apply()
             if (switchSim.isChecked) viewModel.startSimulation() else viewModel.stopSimulation()
             val selectedLangTag = langOptions[spinnerLanguage.selectedItemPosition].second
@@ -510,8 +499,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(24, 24, 24, 24)
         }
         val scroll = android.widget.ScrollView(this).apply {
-            addView(tv)
-            setBackgroundColor(0xFF0A0A0A.toInt())
+            addView(tv); setBackgroundColor(0xFF0A0A0A.toInt())
         }
         android.app.AlertDialog.Builder(this)
             .setTitle("Log connessioni")

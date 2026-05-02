@@ -7,20 +7,37 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.*
 
+/**
+ * DashForegroundService — unico proprietario di tutti i manager.
+ *
+ * Architettura:
+ *   TpmsManager ─┐
+ *   ObdManager  ─┼─► combine ─► _dashState ─► loop log 500ms
+ *   GpsManager  ─┘                          ─► ViewModel (UI read-only)
+ *   GSensor ──────────────────────────────► _gLateral ─► ViewModel (UI)
+ *
+ * Il ViewModel non inizializza più nulla — fa solo collect degli StateFlow
+ * esposti nel companion object di questo service.
+ * La MainActivity non tocca mai i dati grezzi.
+ */
 class DashForegroundService : Service() {
 
     companion object {
-        const val CHANNEL_ID  = "duke390_dash_channel"
-        const val NOTIF_ID    = 1
-        const val LOG_INTERVAL_MS = 500L   // frequenza di campionamento: 2 Hz
+        const val CHANNEL_ID      = "duke390_dash_channel"
+        const val NOTIF_ID        = 1
+        const val LOG_INTERVAL_MS = 500L  // 2 Hz
 
-        // Espone gLateral e gyroPitch/Yaw alla MainActivity per la UI,
-        // senza che l'Activity debba tenere il proprio GSensor.
+        // ── StateFlow pubblici letti dal ViewModel senza binding ──────────────
+        private val _dashState = MutableStateFlow(DashState())
+        val dashState: StateFlow<DashState> = _dashState
+
         private val _gLateral = MutableStateFlow(0f)
         val gLateralFlow: StateFlow<Float> = _gLateral
+
+        private val _gpsState = MutableStateFlow(GpsManager.GpsData())
+        val gpsState: StateFlow<GpsManager.GpsData> = _gpsState
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, DashForegroundService::class.java))
@@ -31,17 +48,18 @@ class DashForegroundService : Service() {
         }
     }
 
-    private var wakeLock:      PowerManager.WakeLock? = null
-    private lateinit var gpsManager:     GpsManager
-    private lateinit var gSensor:        GSensor
-    private lateinit var sessionLogger:  SessionLogger
+    // ── Manager — tutti nel service, nessuno nel ViewModel ───────────────────
+    private lateinit var tpmsManager:   TpmsManager
+    private lateinit var obdManager:    ObdManager
+    private lateinit var gpsManager:    GpsManager
+    private lateinit var gSensor:       GSensor
+    private lateinit var sessionLogger: SessionLogger
+    val simulationManager = SimulationManager()
 
-    // Scope del service — cancellato in onDestroy
+    private var wakeLock: PowerManager.WakeLock? = null
+
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Stato OBD/TPMS aggiornato dall'Activity via updateDashState().
-    // MutableStateFlow è thread-safe — nessun @Volatile necessario.
-    private val _dashState = MutableStateFlow(DashState())
     @Volatile private var lastGLateral: Float = 0f
 
     override fun onCreate() {
@@ -50,68 +68,94 @@ class DashForegroundService : Service() {
         startForeground(NOTIF_ID, buildNotification())
         acquireWakeLock()
 
-        // ── GPS — inizializzato qui, vive per tutta la durata del service ──────
-        gpsManager = GpsManager(this)
+        // ── Legge prefs e inizializza i manager ───────────────────────────────
+        val prefs  = getSharedPreferences(DashViewModel.PREFS_NAME, Context.MODE_PRIVATE)
+        val idAnt  = prefs.getString(DashViewModel.PREF_ID_ANT,  null)
+            ?.takeIf { it.isNotBlank() } ?: TpmsManager.DEFAULT_ID_ANT
+        val idPost = prefs.getString(DashViewModel.PREF_ID_POST, null)
+            ?.takeIf { it.isNotBlank() } ?: TpmsManager.DEFAULT_ID_POST
+
+        tpmsManager   = TpmsManager(this)
+        obdManager    = ObdManager(this)
+        gpsManager    = GpsManager(this)
+        sessionLogger = SessionLogger(this)
+
+        tpmsManager.start(idAnt, idPost)
+        obdManager.start()
         gpsManager.start()
 
-        // ── GSensor — aggiorna lastGLateral e lo espone alla MainActivity ──────
         gSensor = GSensor(this) { gLateral ->
-            lastGLateral = gLateral
+            lastGLateral    = gLateral
             _gLateral.value = gLateral
         }
         gSensor.start()
 
-        // ── SessionLogger ─────────────────────────────────────────────────────
-        sessionLogger = SessionLogger(this)
+        // ── Unico combine → _dashState ────────────────────────────────────────
+        serviceScope.launch {
+            combine(
+                tpmsManager.antState,
+                tpmsManager.postState,
+                obdManager.obdState,
+                obdManager.peaks,
+                simulationManager.simState
+            ) { ant, post, obd, peaks, sim ->
+                sim ?: DashState(
+                    tpmsAnt  = ant,
+                    tpmsPost = post,
+                    obd      = obd,
+                    peaks    = peaks
+                )
+            }.collect { _dashState.value = it }
+        }
 
-        // ── Loop di log a intervallo fisso ────────────────────────────────────
-        // Indipendente dalla frequenza OBD: anche se l'OBD non risponde per
-        // 1 secondo, il GPS e il G-sensor vengono comunque campionati.
-        // Guard: non scrivere frame completamente vuoti (binding non ancora pronto
-        // o OBD mai connesso e TPMS mai ricevuto).
+        // ── Sincronizza gpsState nel companion ───────────────────────────────
+        serviceScope.launch {
+            gpsManager.gpsState.collect { _gpsState.value = it }
+        }
+
+        // ── Loop di log 2 Hz — indipendente da OBD/TPMS ──────────────────────
         serviceScope.launch {
             while (isActive) {
                 delay(LOG_INTERVAL_MS)
                 val state = _dashState.value
                 val hasData = state.obd.connected ||
-                              state.tpmsAnt.pressureBar > 0f ||
+                              state.tpmsAnt.pressureBar  > 0f ||
                               state.tpmsPost.pressureBar > 0f
                 if (sessionLogger.isLogging && hasData) {
                     sessionLogger.log(
                         state    = state,
                         gLateral = lastGLateral,
-                        gps      = gpsManager.gpsState.value
+                        gps      = _gpsState.value
                     )
                 }
             }
         }
     }
 
-    /**
-     * Chiamato dalla MainActivity per aggiornare lo stato OBD/TPMS
-     * che il service usa nel loop di log.
-     * L'Activity continua a fare collect di dashState per la UI,
-     * ma ora è il service a decidere quando scrivere.
-     */
-    fun updateDashState(state: DashState) {
-        _dashState.value = state
-    }
+    // ── API pubblica ──────────────────────────────────────────────────────────
 
-    /**
-     * Deleghe SessionLogger — chiamati dalla MainActivity tramite binding o broadcast.
-     */
-    fun startLogging()  = sessionLogger.startSession()
-    fun stopLogging()   = sessionLogger.stopSession()
-    fun isLogging()     = sessionLogger.isLogging
-
-    /**
-     * Offset calibrazione G-sensor — la MainActivity può ancora mostrare il valore
-     * nella dialog settings tramite il service bound o via StateFlow.
-     */
-    fun setGSensorOffset() = gSensor.setOffset()
+    fun startLogging()      = sessionLogger.startSession()
+    fun stopLogging()       = sessionLogger.stopSession()
+    fun isLogging()         = sessionLogger.isLogging
+    fun setGSensorOffset()  = gSensor.setOffset()
     fun getGSensorOffsetG() = gSensor.getOffsetG()
 
-    // ── Binder — la MainActivity si lega per chiamare le funzioni di controllo ──
+    /**
+     * Aggiorna gli ID TPMS e riavvia i manager BLE.
+     * Salva anche nelle prefs per il prossimo avvio.
+     */
+    fun applySettings(idAnt: String, idPost: String) {
+        getSharedPreferences(DashViewModel.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(DashViewModel.PREF_ID_ANT,  idAnt)
+            .putString(DashViewModel.PREF_ID_POST, idPost)
+            .apply()
+        tpmsManager.restart(idAnt, idPost)
+        obdManager.restart()
+    }
+
+    // ── Binder ────────────────────────────────────────────────────────────────
+
     private val binder = LocalBinder()
 
     inner class LocalBinder : android.os.Binder() {
@@ -119,13 +163,15 @@ class DashForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         serviceScope.cancel()
         gSensor.stop()
         gpsManager.stop()
+        tpmsManager.stop()
+        obdManager.stop()
+        simulationManager.stop()
         sessionLogger.stopSession()
         releaseWakeLock()
         super.onDestroy()
@@ -134,11 +180,9 @@ class DashForegroundService : Service() {
     // ── WakeLock ──────────────────────────────────────────────────────────────
 
     private fun acquireWakeLock() {
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "Duke390Dash::BleWakeLock"
-        ).apply { acquire(4 * 60 * 60 * 1000L) }
+        wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Duke390Dash::WakeLock")
+            .apply { acquire(4 * 60 * 60 * 1000L) }
     }
 
     private fun releaseWakeLock() {
