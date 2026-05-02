@@ -422,3 +422,122 @@ class MainActivity : AppCompatActivity() {
         val prefs       = getSharedPreferences(DashViewModel.PREFS_NAME, MODE_PRIVATE)
         val savedIdAnt  = prefs.getString(DashViewModel.PREF_ID_ANT, "") ?: ""
         val savedIdPost = prefs.getString(DashViewModel.PREF_ID_POST, "") ?: ""
+        val editIdAnt       = dialogView.findViewById<android.widget.EditText>(R.id.editIdAnt)
+        val editIdPost      = dialogView.findViewById<android.widget.EditText>(R.id.editIdPost)
+        val switchSim       = dialogView.findViewById<android.widget.Switch>(R.id.switchSimulation)
+        val switchMoto      = dialogView.findViewById<android.widget.Switch>(R.id.switchMotoMode)
+        val btnSetOffset    = dialogView.findViewById<android.widget.Button>(R.id.btnSetOffset)
+        val txtOffset       = dialogView.findViewById<android.widget.TextView>(R.id.txtOffsetValue)
+        val btnToggleLog    = dialogView.findViewById<android.widget.Button>(R.id.btnToggleLog)
+        val txtLogStatus    = dialogView.findViewById<android.widget.TextView>(R.id.txtLogStatus)
+        val spinnerLanguage = dialogView.findViewById<android.widget.Spinner>(R.id.spinnerLanguage)
+
+        val langOptions = listOf(
+            getString(R.string.lang_system)  to "",
+            getString(R.string.lang_italian) to "it",
+            getString(R.string.lang_english) to "en"
+        )
+        val langAdapter = android.widget.ArrayAdapter(this,
+            android.R.layout.simple_spinner_item, langOptions.map { it.first })
+            .apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        spinnerLanguage.adapter = langAdapter
+        val currentLocales = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
+        val currentTag = if (currentLocales.isEmpty) "" else currentLocales[0]?.language ?: ""
+        spinnerLanguage.setSelection(langOptions.indexOfFirst { it.second == currentTag }.takeIf { it >= 0 } ?: 0)
+
+        editIdAnt.setText(savedIdAnt)
+        editIdPost.setText(savedIdPost)
+        switchSim.isChecked  = viewModel.simulationManager.isRunning
+        switchMoto.isChecked = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
+
+        updateLogStatus(txtLogStatus, btnToggleLog)
+
+        // Offset G-sensor — ora delegato al service
+        val svc = dashService
+        txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
+        btnSetOffset.setOnClickListener {
+            svc?.setGSensorOffset()
+            txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
+            btnSetOffset.text = getString(R.string.btn_offset_saved)
+            btnSetOffset.setBackgroundColor(0xFF00CC44.toInt())
+        }
+
+        btnToggleLog.setOnClickListener {
+            if (svc?.isLogging() == true) svc.stopLogging() else svc?.startLogging()
+            notifyTile()
+            updateLogStatus(txtLogStatus, btnToggleLog)
+        }
+
+        dialogView.findViewById<android.widget.Button>(R.id.btnShowLog).setOnClickListener {
+            showLogDialog()
+        }
+
+        dialogView.findViewById<android.widget.Button>(R.id.btnOpenAnalyzer).setOnClickListener {
+            dialog.dismiss()
+            startActivity(android.content.Intent(this, AnalyzerActivity::class.java))
+        }
+
+        dialogView.findViewById<android.widget.Button>(R.id.btnExit).setOnClickListener {
+            dialog.dismiss(); DashForegroundService.stop(this)
+            SplashActivity.splashShown = false; finishAffinity()
+        }
+        dialogView.findViewById<android.widget.Button>(R.id.btnCancel).setOnClickListener {
+            dialog.dismiss()
+        }
+        dialogView.findViewById<android.widget.Button>(R.id.btnSave).setOnClickListener {
+            val idAnt  = editIdAnt.text.toString().trim().uppercase()
+            val idPost = editIdPost.text.toString().trim().uppercase()
+            viewModel.saveSettings(this, idAnt, idPost)
+            prefs.edit().putBoolean(DashViewModel.PREF_MOTO_MODE, switchMoto.isChecked).apply()
+            if (switchSim.isChecked) viewModel.startSimulation() else viewModel.stopSimulation()
+            val selectedLangTag = langOptions[spinnerLanguage.selectedItemPosition].second
+            val newLocales = if (selectedLangTag.isEmpty())
+                androidx.core.os.LocaleListCompat.getEmptyLocaleList()
+            else
+                androidx.core.os.LocaleListCompat.forLanguageTags(selectedLangTag)
+            androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(newLocales)
+            dialog.dismiss()
+        }
+        dialog.show()
+    }
+
+    private fun showLogDialog() {
+        val tv = android.widget.TextView(this).apply {
+            text = AppLog.get().ifEmpty { "Nessun log disponibile" }
+            setTextColor(0xFF00CC44.toInt())
+            textSize = 10f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(24, 24, 24, 24)
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            addView(tv)
+            setBackgroundColor(0xFF0A0A0A.toInt())
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Log connessioni")
+            .setView(scroll)
+            .setPositiveButton("CHIUDI") { d, _ -> d.dismiss() }
+            .setNegativeButton("PULISCI") { d, _ -> AppLog.clear(); d.dismiss() }
+            .create().also { dlg ->
+                dlg.show()
+                scroll.post { scroll.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+            }
+    }
+
+    private fun updateLogStatus(
+        txtLogStatus: android.widget.TextView,
+        btnToggleLog: android.widget.Button
+    ) {
+        if (dashService?.isLogging() == true) {
+            txtLogStatus.text = getString(R.string.log_recording)
+            txtLogStatus.setTextColor(0xFF00CC44.toInt())
+            btnToggleLog.text = getString(R.string.btn_stop)
+            btnToggleLog.setBackgroundColor(0xFFFF3300.toInt())
+        } else {
+            txtLogStatus.text = getString(R.string.log_inactive)
+            txtLogStatus.setTextColor(0xFF555555.toInt())
+            btnToggleLog.text = getString(R.string.btn_start)
+            btnToggleLog.setBackgroundColor(0xFF00CC44.toInt())
+        }
+    }
+}
