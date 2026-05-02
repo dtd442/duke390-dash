@@ -22,7 +22,7 @@ class SessionLogger(private val context: Context) {
     var isLogging = false
         private set
 
-    private var csvOutputStream: OutputStream? = null
+    private var csvOutputStream:  OutputStream? = null
     private var jsonOutputStream: OutputStream? = null
     private var jsonArray = JSONArray()
 
@@ -37,13 +37,13 @@ class SessionLogger(private val context: Context) {
             csvOutputStream  = openOutputStream("$sessionName.csv",  "text/csv")
             jsonOutputStream = openOutputStream("$sessionName.json", "application/json")
 
-            // Header CSV aggiornato: rimosso ant_connected e post_connected[cite: 2, 4]
             val header = "timestamp," +
                     "ant_pressure_bar,ant_temp_c,ant_battery_pct,ant_alarm," +
                     "post_pressure_bar,post_temp_c,post_battery_pct,post_alarm," +
                     "tps_pct,engine_load_pct,iat_c,ignition_advance_deg,fuel_l100," +
                     "fuel_trim_pct,coolant_temp_c,speed_kmh,rpm,obd_connected," +
-                    "g_lateral,g_front,latitude,longitude,gps_speed_kmh,gps_accuracy_m\n"
+                    "g_lateral,gyro_x,gyro_y,gyro_z," +
+                    "latitude,longitude,altitude_m,bearing_deg,gps_speed_kmh,gps_accuracy_m\n"
 
             csvOutputStream?.write(header.toByteArray())
             csvOutputStream?.flush()
@@ -75,12 +75,29 @@ class SessionLogger(private val context: Context) {
         }
     }
 
-    fun log(state: DashState, gLateral: Float, gps: GpsManager.GpsData = GpsManager.GpsData()) {
+    /**
+     * Registra un frame di telemetria.
+     *
+     * @param state    stato OBD + TPMS
+     * @param gLateral accelerazione laterale in G (accelerometro asse X)
+     * @param gyroX    velocità angolare asse X in rad/s (roll  — utile per lean angle sul manubrio)
+     * @param gyroY    velocità angolare asse Y in rad/s (pitch — beccheggio)
+     * @param gyroZ    velocità angolare asse Z in rad/s (yaw   — imbardata)
+     * @param gps      dati GPS
+     */
+    fun log(
+        state:    DashState,
+        gLateral: Float,
+        gyroX:    Float = 0f,
+        gyroY:    Float = 0f,
+        gyroZ:    Float = 0f,
+        gps:      GpsManager.GpsData = GpsManager.GpsData()
+    ) {
         if (!isLogging) return
         val ts = tsSdf.format(Date())
         try {
-            writeCsvRow(ts, state, gLateral, gps)
-            writeJsonEntry(ts, state, gLateral, gps)
+            writeCsvRow(ts, state, gLateral, gyroX, gyroY, gyroZ, gps)
+            writeJsonEntry(ts, state, gLateral, gyroX, gyroY, gyroZ, gps)
         } catch (e: Exception) {
             Log.e(TAG, "Errore scrittura log: ${e.message}")
         }
@@ -99,18 +116,21 @@ class SessionLogger(private val context: Context) {
             context.contentResolver.openOutputStream(uri, "wa")
                 ?: throw Exception("openOutputStream null per $fileName")
         } else {
-            val dir  = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             dir.mkdirs()
             java.io.File(dir, fileName).outputStream()
         }
     }
 
-    private fun writeCsvRow(ts: String, state: DashState, gLateral: Float, gps: GpsManager.GpsData) {
-        val ant  = state.tpmsAnt
+    private fun writeCsvRow(
+        ts: String, state: DashState,
+        gLateral: Float, gyroX: Float, gyroY: Float, gyroZ: Float,
+        gps: GpsManager.GpsData
+    ) {
+        val ant = state.tpmsAnt
         val post = state.tpmsPost
-        val obd  = state.obd
+        val obd = state.obd
 
-        // Riga CSV aggiornata: rimossi i riferimenti a .connected per TPMS[cite: 2, 4]
         val row = "$ts," +
                 "${ant.pressureBar},${ant.tempC},${ant.batteryPct},${ant.alarm}," +
                 "${post.pressureBar},${post.tempC},${post.batteryPct},${post.alarm}," +
@@ -118,13 +138,19 @@ class SessionLogger(private val context: Context) {
                 "${obd.ignitionAdvance},${obd.fuelConsumptionL100}," +
                 "${obd.fuelTrimPct},${obd.coolantTempCelsius}," +
                 "${obd.speedKmh},${obd.rpmValue},${obd.connected}," +
-                "$gLateral,0.0,${gps.latitude},${gps.longitude},${gps.speedKmh},${gps.accuracyM}\n"
+                "$gLateral,$gyroX,$gyroY,$gyroZ," +
+                "${gps.latitude},${gps.longitude},${gps.altitudeM},${gps.bearingDeg}," +
+                "${gps.speedKmh},${gps.accuracyM}\n"
 
         csvOutputStream?.write(row.toByteArray())
         csvOutputStream?.flush()
     }
 
-    private fun writeJsonEntry(ts: String, state: DashState, gLateral: Float, gps: GpsManager.GpsData) {
+    private fun writeJsonEntry(
+        ts: String, state: DashState,
+        gLateral: Float, gyroX: Float, gyroY: Float, gyroZ: Float,
+        gps: GpsManager.GpsData
+    ) {
         val ant  = state.tpmsAnt
         val post = state.tpmsPost
         val obd  = state.obd
@@ -136,17 +162,16 @@ class SessionLogger(private val context: Context) {
                 put("temp_c",       ant.tempC)
                 put("battery_pct",  ant.batteryPct)
                 put("alarm",        ant.alarm)
-                // Rimosso connected qui[cite: 2]
             })
             put("tpms_post", JSONObject().apply {
                 put("pressure_bar", post.pressureBar)
                 put("temp_c",       post.tempC)
                 put("battery_pct",  post.batteryPct)
                 put("alarm",        post.alarm)
-                // Rimosso connected qui[cite: 2]
             })
             put("obd", JSONObject().apply {
                 put("tps_pct",              obd.tpsPercent)
+                put("accel_pedal_pct",      obd.accelPedalPct)
                 put("engine_load_pct",      obd.engineLoadPercent)
                 put("iat_c",                obd.iatCelsius)
                 put("ignition_advance_deg", obd.ignitionAdvance)
@@ -156,18 +181,21 @@ class SessionLogger(private val context: Context) {
                 put("speed_kmh",            obd.speedKmh)
                 put("rpm",                  obd.rpmValue)
                 put("map_kpa",              obd.mapKpa)
-                put("accel_pedal_pct",      obd.accelPedalPct)
                 put("baro_kpa",             obd.baroKpa)
                 put("battery_voltage",      obd.batteryVoltage)
                 put("dtc_count",            obd.dtcCount)
                 put("mil_on",               obd.milOn)
-                put("connected",            obd.connected) // OBD connected esiste ancora[cite: 2]
+                put("connected",            obd.connected)
             })
             put("sensors", JSONObject().apply {
-                put("g_lateral",      gLateral)
-                put("g_front",        0f)
-                put("latitude",       gps.latitude)
-                put("longitude",      gps.longitude)
+                put("g_lateral",    gLateral)   // accelerometro asse X in G
+                put("gyro_x",       gyroX)      // roll  rad/s — lean angle sul manubrio
+                put("gyro_y",       gyroY)      // pitch rad/s — beccheggio
+                put("gyro_z",       gyroZ)      // yaw   rad/s — imbardata
+                put("latitude",     gps.latitude)
+                put("longitude",    gps.longitude)
+                put("altitude_m",   gps.altitudeM)   // altitudine GPS nativa
+                put("bearing_deg",  gps.bearingDeg)  // direzione di marcia
                 put("gps_speed_kmh",  gps.speedKmh)
                 put("gps_accuracy_m", gps.accuracyM)
                 put("gps_available",  gps.available)

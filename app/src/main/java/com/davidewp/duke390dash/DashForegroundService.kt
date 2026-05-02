@@ -61,6 +61,9 @@ class DashForegroundService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile private var lastGLateral: Float = 0f
+    @Volatile private var lastGyroX:    Float = 0f
+    @Volatile private var lastGyroY:    Float = 0f
+    @Volatile private var lastGyroZ:    Float = 0f
 
     override fun onCreate() {
         super.onCreate()
@@ -84,8 +87,11 @@ class DashForegroundService : Service() {
         obdManager.start()
         gpsManager.start()
 
-        gSensor = GSensor(this) { gLateral ->
+        gSensor = GSensor(this) { gLateral, gyroX, gyroY, gyroZ ->
             lastGLateral    = gLateral
+            lastGyroX       = gyroX
+            lastGyroY       = gyroY
+            lastGyroZ       = gyroZ
             _gLateral.value = gLateral
         }
         gSensor.start()
@@ -125,6 +131,9 @@ class DashForegroundService : Service() {
                     sessionLogger.log(
                         state    = state,
                         gLateral = lastGLateral,
+                        gyroX    = lastGyroX,
+                        gyroY    = lastGyroY,
+                        gyroZ    = lastGyroZ,
                         gps      = _gpsState.value
                     )
                 }
