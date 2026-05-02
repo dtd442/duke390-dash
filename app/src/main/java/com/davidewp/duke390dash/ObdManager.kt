@@ -12,7 +12,6 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanSettings
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,7 +65,7 @@ class ObdManager(private val context: Context) {
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
     private var isConnected = false
-    private var lastValidSpeed = 0f
+    private var lastValidSpeed = -1f  // -1 = nessun campione ancora accettato
     private var loopCount = 0
 
     // ── Sincronizzazione GATT deterministica ─────────────────────────────────
@@ -98,6 +97,7 @@ class ObdManager(private val context: Context) {
         writeChar = null
         writeAck?.cancel()
         responseDeferred?.cancel()
+        lastValidSpeed = -1f
         _obdState.value = ObdData()
     }
 
@@ -164,6 +164,7 @@ class ObdManager(private val context: Context) {
                     readJob?.cancel()
                     writeAck?.cancel()
                     responseDeferred?.cancel()
+                    lastValidSpeed = -1f
                     _obdState.value = ObdData()
                     gatt.close()
                     this@ObdManager.gatt = null
@@ -256,43 +257,6 @@ class ObdManager(private val context: Context) {
         sendCmd("ATSP6");   delay(500)
         sendCmd("ATSH7E0"); delay(300)
         AppLog.add(TAG, "ELM327 init completato — protocollo CAN 11bit/500k, header 7E0")
-        discoverSupportedPids()
-    }
-
-    // ─── PID Discovery ────────────────────────────────────────────────────────
-
-    private suspend fun discoverSupportedPids() {
-        AppLog.add(TAG, "DISCOVERY — inizio scan PID supportati")
-        val queries = listOf(
-            "0100" to (0x01..0x20),
-            "0120" to (0x21..0x40),
-            "0140" to (0x41..0x60)
-        )
-        for ((cmd, range) in queries) {
-            val raw = readPid(cmd)
-            if (raw == null) {
-                AppLog.add(TAG, "DISCOVERY $cmd -> NODATA/TIMEOUT")
-            } else {
-                val hex = raw.replace(" ", "").takeLast(8)
-                if (hex.length < 8) {
-                    AppLog.add(TAG, "DISCOVERY $cmd -> risposta troppo corta: $raw")
-                } else {
-                    val bitmask = hex.toLongOrNull(16)
-                    if (bitmask == null) {
-                        AppLog.add(TAG, "DISCOVERY $cmd -> parse fallito: $hex")
-                    } else {
-                        val supported = mutableListOf<String>()
-                        for ((index, pid) in range.withIndex()) {
-                            if ((bitmask shr (31 - index)) and 1L == 1L) {
-                                supported.add("01%02X".format(pid))
-                            }
-                        }
-                        AppLog.add(TAG, "DISCOVERY $cmd -> supportati: ${supported.joinToString(", ").ifEmpty { "nessuno" }}")
-                    }
-                }
-            }
-        }
-        AppLog.add(TAG, "DISCOVERY — completata")
     }
 
     // ─── Read Loop ────────────────────────────────────────────────────────────
@@ -310,7 +274,6 @@ class ObdManager(private val context: Context) {
 
     private suspend fun readAllPids() {
         loopCount++
-        Log.d(TAG, "ciclo $loopCount — tps=${_obdState.value.tpsPercent.toInt()}% rpm=${_obdState.value.rpmValue.toInt()} spd=${_obdState.value.speedKmh.toInt()}kmh")
 
         // ── PID ad ogni ciclo ─────────────────────────────────────────────────
         val tps      = readPid("0111")?.let { parsePercent(it) }
@@ -433,7 +396,7 @@ class ObdManager(private val context: Context) {
 
     private fun validateSpeed(rawSpeed: Float): Float? {
         if (rawSpeed > MAX_PLAUSIBLE_SPEED) return null
-        if (Math.abs(rawSpeed - lastValidSpeed) > MAX_SPEED_DELTA) return null
+        if (lastValidSpeed >= 0f && Math.abs(rawSpeed - lastValidSpeed) > MAX_SPEED_DELTA) return null
         lastValidSpeed = rawSpeed
         return rawSpeed
     }

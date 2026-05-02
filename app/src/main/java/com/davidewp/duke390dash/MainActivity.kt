@@ -4,8 +4,13 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
@@ -25,38 +30,35 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: DashViewModel by viewModels()
-    private lateinit var gSensor: GSensor
-    private lateinit var gpsManager: GpsManager
-    private lateinit var sessionLogger: SessionLogger
-    private var sweepDone = false
-    private var lastGLateral = 0f
 
-    // Riceve il comando toggle dal tile del pannello rapido
-    private val tileReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
-            if (intent.action == DashTileService.ACTION_TOGGLE_LOG) {
-                if (sessionLogger.isLogging) sessionLogger.stopSession()
-                else sessionLogger.startSession()
-                notifyTile()
-            }
+    // ── Service binding ───────────────────────────────────────────────────────
+    private var dashService: DashForegroundService? = null
+    private var serviceBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            dashService  = (binder as DashForegroundService.LocalBinder).getService()
+            serviceBound = true
+            notifyTile()
+        }
+        override fun onServiceDisconnected(name: ComponentName) {
+            dashService  = null
+            serviceBound = false
         }
     }
 
+    private var sweepDone = false
 
 
+    // ── Permessi ──────────────────────────────────────────────────────────────
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // BLE e GPS sono obbligatori — senza questi l'app non funziona
         val bleOk = permissions[android.Manifest.permission.BLUETOOTH_SCAN] == true &&
                 permissions[android.Manifest.permission.BLUETOOTH_CONNECT] == true
         val gpsOk = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
-        // POST_NOTIFICATIONS è opzionale — se negato la notifica non appare
-        // ma BLE e telemetria funzionano comunque
         if (bleOk && gpsOk) {
-            AppLog.init(this)
-            viewModel.init(this)
-            gpsManager.start()
+            // Manager già avviati nel service — nessuna init aggiuntiva necessaria
         }
     }
 
@@ -69,7 +71,14 @@ class MainActivity : AppCompatActivity() {
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
+
         DashForegroundService.start(this)
+        bindService(
+            Intent(this, DashForegroundService::class.java),
+            serviceConnection,
+            Context.BIND_AUTO_CREATE
+        )
+
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -89,17 +98,6 @@ class MainActivity : AppCompatActivity() {
         AppLog.add("MainActivity", "App avviata")
         initNa()
 
-        gSensor = GSensor(this) { gLateral ->
-            lastGLateral = gLateral
-            runOnUiThread { updateGSensor(gLateral) }
-        }
-        gSensor.start()
-
-        sessionLogger = SessionLogger(this)
-
-        // GPS — opzionale, avviato nel callback permessi insieme al ViewModel
-        gpsManager = GpsManager(this)
-
         requestPermissions.launch(arrayOf(
             android.Manifest.permission.BLUETOOTH_SCAN,
             android.Manifest.permission.BLUETOOTH_CONNECT,
@@ -107,25 +105,22 @@ class MainActivity : AppCompatActivity() {
             android.Manifest.permission.POST_NOTIFICATIONS
         ))
 
-        binding.root.setOnLongClickListener {
-            showSettingsDialog()
-            true
-        }
+        binding.root.setOnLongClickListener { showSettingsDialog(); true }
 
+        // ── Collect dashState dal ViewModel (che espone il companion StateFlow) ─
         lifecycleScope.launch {
             viewModel.dashState.collect { state ->
-                sessionLogger.log(state, lastGLateral, gpsManager.gpsState.value)
                 if (sweepDone) updateUI(state)
             }
         }
 
-        // Registra receiver per comandi dal tile pannello rapido
-        registerReceiver(
-            tileReceiver,
-            android.content.IntentFilter(DashTileService.ACTION_TOGGLE_LOG),
-            RECEIVER_NOT_EXPORTED
-        )
-        // Notifica tile che l'app è attiva
+        // ── Collect gLateral per la UI ────────────────────────────────────────
+        lifecycleScope.launch {
+            viewModel.gLateral.collect { gLateral ->
+                runOnUiThread { updateGSensor(gLateral) }
+            }
+        }
+
         notifyTile()
     }
 
@@ -133,8 +128,6 @@ class MainActivity : AppCompatActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && !sweepDone) runSweep()
     }
-
-    // ─── Animatori fluidi ─────────────────────────────────────────────────────
 
     // ─── Init N/A ─────────────────────────────────────────────────────────────
 
@@ -217,39 +210,30 @@ class MainActivity : AppCompatActivity() {
         val na   = getString(R.string.na)
         val dash = getString(R.string.dash)
 
-        // Spie
-        // Verde  = entrambi ricevuti e non stale
-        // Arancione = almeno uno stale (non trasmette da troppo) o solo uno ricevuto finora
-        // Rosso  = nessuno ha mai trasmesso (N/A)
-        val antOk   = state.tpmsAnt.pressureBar  > 0f && !state.tpmsAnt.staleWarning
-        val postOk  = state.tpmsPost.pressureBar > 0f && !state.tpmsPost.staleWarning
-        val antSeen = state.tpmsAnt.pressureBar  > 0f
-        val postSeen= state.tpmsPost.pressureBar > 0f
+        val antOk    = state.tpmsAnt.pressureBar  > 0f && !state.tpmsAnt.staleWarning
+        val postOk   = state.tpmsPost.pressureBar > 0f && !state.tpmsPost.staleWarning
+        val antSeen  = state.tpmsAnt.pressureBar  > 0f
+        val postSeen = state.tpmsPost.pressureBar > 0f
         binding.spiaTpms.setTextColor(when {
-            antOk && postOk           -> 0xFF00CC44.toInt()  // entrambi ok
-            antSeen || postSeen       -> 0xFFEF9F27.toInt()  // almeno uno visto ma stale o mancante
-            else                      -> 0xFFFF3300.toInt()  // nessuno mai visto
+            antOk && postOk     -> 0xFF00CC44.toInt()
+            antSeen || postSeen -> 0xFFEF9F27.toInt()
+            else                -> 0xFFFF3300.toInt()
         })
         binding.spiaObd.setTextColor(if (state.obd.connected) 0xFF00CC44.toInt() else 0xFFFF3300.toInt())
 
-        // MIL / DTC
         if (state.obd.milOn) {
-            binding.spiaMil.text    = "MIL ${state.obd.dtcCount}"
+            binding.spiaMil.text = "MIL ${state.obd.dtcCount}"
             binding.spiaMil.setTextColor(0xFFFF3300.toInt())
             binding.spiaMil.setBackgroundColor(0x33FF3300)
         } else if (state.obd.dtcCount > 0) {
-            // DTC presenti ma MIL spenta — segnala in arancione
-            binding.spiaMil.text    = "DTC ${state.obd.dtcCount}"
+            binding.spiaMil.text = "DTC ${state.obd.dtcCount}"
             binding.spiaMil.setTextColor(0xFFEF9F27.toInt())
             binding.spiaMil.setBackgroundColor(0x22EF9F27)
         } else {
-            binding.spiaMil.text    = ""
+            binding.spiaMil.text = ""
             binding.spiaMil.setBackgroundColor(0x00000000)
         }
 
-        // ── TPMS Anteriore
-        // Se mai ricevuto almeno un valore (pressureBar > 0), mostra sempre l'ultimo.
-        // Il colore diventa grigio quando il segnale cade — i valori restano visibili.
         if (state.tpmsAnt.pressureBar > 0f) {
             binding.barAntPress.progress = ((state.tpmsAnt.pressureBar / 4f * 100).toInt())
             binding.valAntPress.text = "%.1f bar".format(state.tpmsAnt.pressureBar)
@@ -280,7 +264,6 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // ── TPMS Posteriore
         if (state.tpmsPost.pressureBar > 0f) {
             binding.barPostPress.progress = ((state.tpmsPost.pressureBar / 4f * 100).toInt())
             binding.valPostPress.text = "%.1f bar".format(state.tpmsPost.pressureBar)
@@ -311,9 +294,7 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // ── OBD2
         if (state.obd.connected) {
-            // TPS
             binding.barTps.progress = state.obd.tpsPercent.toInt()
             binding.valTps.text = "%.0f %%".format(state.obd.tpsPercent)
             setBarColor(binding.barTps, when {
@@ -321,7 +302,6 @@ class MainActivity : AppCompatActivity() {
                 state.obd.tpsPercent < 70f -> 0xFFEF9F27.toInt()
                 else                       -> 0xFFFF3300.toInt()
             })
-            // Carico
             binding.barLoad.progress = state.obd.engineLoadPercent.toInt()
             binding.valLoad.text = "%.0f %%".format(state.obd.engineLoadPercent)
             setBarColor(binding.barLoad, when {
@@ -329,7 +309,6 @@ class MainActivity : AppCompatActivity() {
                 state.obd.engineLoadPercent < 80f -> 0xFFEF9F27.toInt()
                 else                              -> 0xFFFF3300.toInt()
             })
-            // IAT
             val iatPct = (((state.obd.iatCelsius + 20f) / 100f) * 100).toInt().coerceIn(0, 100)
             binding.barIat.progress = iatPct
             binding.valIat.text = "%.0f °C".format(state.obd.iatCelsius)
@@ -338,7 +317,6 @@ class MainActivity : AppCompatActivity() {
                 state.obd.iatCelsius < 50f -> 0xFFEF9F27.toInt()
                 else                       -> 0xFFFF3300.toInt()
             })
-            // Ignition advance
             val ignPct = (state.obd.ignitionAdvance / 40f * 100f).toInt().coerceIn(0, 100)
             binding.barAfr.progress = ignPct
             binding.valAfr.text = "%.1f°".format(state.obd.ignitionAdvance)
@@ -348,7 +326,6 @@ class MainActivity : AppCompatActivity() {
                 else                            -> getString(R.string.ign_high)
             }
             setBarColor(binding.barAfr, 0xFF4DA6FF.toInt())
-            // Consumo
             val consumePct = ((state.obd.fuelConsumptionL100 / 20f) * 100).toInt().coerceIn(0, 100)
             binding.barConsume.progress = consumePct
             binding.valConsume.text = "%.1f l/100".format(state.obd.fuelConsumptionL100)
@@ -357,7 +334,6 @@ class MainActivity : AppCompatActivity() {
                 state.obd.fuelConsumptionL100 < 10f -> 0xFFEF9F27.toInt()
                 else                                -> 0xFFFF3300.toInt()
             })
-            // Fuel trim
             val trimPct = ((state.obd.fuelTrimPct + 15f) / 30f * 100f).toInt().coerceIn(0, 100)
             binding.barOilTemp.progress = trimPct
             binding.valOilTemp.text = "%.1f %%".format(state.obd.fuelTrimPct)
@@ -371,10 +347,9 @@ class MainActivity : AppCompatActivity() {
                 state.obd.fuelTrimPct > 5f  -> 0xFFFF3300.toInt()
                 else                        -> 0xFF00CC44.toInt()
             })
-            // Picchi
             binding.valSpeedMax.text = "%.0f km/h".format(state.peaks.maxSpeedKmh)
-            binding.valRpmMax.text = "%.0f".format(state.peaks.maxRpm)
-            binding.valLoadMax.text = "%.0f %%".format(state.peaks.maxEngineLoad)
+            binding.valRpmMax.text   = "%.0f".format(state.peaks.maxRpm)
+            binding.valLoadMax.text  = "%.0f %%".format(state.peaks.maxEngineLoad)
         } else {
             listOf(binding.barTps, binding.barLoad, binding.barIat,
                 binding.barAfr, binding.barConsume, binding.barOilTemp)
@@ -388,21 +363,19 @@ class MainActivity : AppCompatActivity() {
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
-    override fun onResume()  { super.onResume();  gSensor.start(); notifyTile() }
-    override fun onPause()   { super.onPause();   gSensor.stop()  }
+    override fun onResume()  { super.onResume();  notifyTile() }
+    override fun onPause()   { super.onPause() }
+
     override fun onDestroy() {
         super.onDestroy()
-        gSensor.stop()
-        sessionLogger.stopSession()
+        if (serviceBound) { unbindService(serviceConnection); serviceBound = false }
         AppLog.close()
-        try { unregisterReceiver(tileReceiver) } catch (_: Exception) {}
         DashTileService.updateTile(this, running = false, logging = false)
         DashForegroundService.stop(this)
     }
 
-    // Aggiorna il tile con lo stato corrente
     private fun notifyTile() {
-        DashTileService.updateTile(this, running = true, logging = sessionLogger.isLogging)
+        DashTileService.updateTile(this, running = true, logging = dashService?.isLogging() == true)
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────
@@ -420,11 +393,10 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
         val prefs       = getSharedPreferences(DashViewModel.PREFS_NAME, MODE_PRIVATE)
-        val savedIdAnt  = prefs.getString(DashViewModel.PREF_ID_ANT, "") ?: ""
+        val savedIdAnt  = prefs.getString(DashViewModel.PREF_ID_ANT,  "") ?: ""
         val savedIdPost = prefs.getString(DashViewModel.PREF_ID_POST, "") ?: ""
         val editIdAnt       = dialogView.findViewById<android.widget.EditText>(R.id.editIdAnt)
         val editIdPost      = dialogView.findViewById<android.widget.EditText>(R.id.editIdPost)
-        val switchSim       = dialogView.findViewById<android.widget.Switch>(R.id.switchSimulation)
         val switchMoto      = dialogView.findViewById<android.widget.Switch>(R.id.switchMotoMode)
         val btnSetOffset    = dialogView.findViewById<android.widget.Button>(R.id.btnSetOffset)
         val txtOffset       = dialogView.findViewById<android.widget.TextView>(R.id.txtOffsetValue)
@@ -447,21 +419,21 @@ class MainActivity : AppCompatActivity() {
 
         editIdAnt.setText(savedIdAnt)
         editIdPost.setText(savedIdPost)
-        switchSim.isChecked  = viewModel.simulationManager.isRunning
         switchMoto.isChecked = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
 
         updateLogStatus(txtLogStatus, btnToggleLog)
 
-        txtOffset.text = "offset: ${"%.2f".format(gSensor.getOffsetG())} G"
+        val svc = dashService
+        txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
         btnSetOffset.setOnClickListener {
-            gSensor.setOffset()
-            txtOffset.text = "offset: ${"%.2f".format(gSensor.getOffsetG())} G"
+            svc?.setGSensorOffset()
+            txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
             btnSetOffset.text = getString(R.string.btn_offset_saved)
             btnSetOffset.setBackgroundColor(0xFF00CC44.toInt())
         }
 
         btnToggleLog.setOnClickListener {
-            if (sessionLogger.isLogging) sessionLogger.stopSession() else sessionLogger.startSession()
+            if (svc?.isLogging() == true) svc.stopLogging() else svc?.startLogging()
             notifyTile()
             updateLogStatus(txtLogStatus, btnToggleLog)
         }
@@ -469,17 +441,15 @@ class MainActivity : AppCompatActivity() {
         dialogView.findViewById<android.widget.Button>(R.id.btnShowLog).setOnClickListener {
             showLogDialog()
         }
-
         dialogView.findViewById<android.widget.Button>(R.id.btnOpenAnalyzer).setOnClickListener {
             dialog.dismiss()
             startActivity(android.content.Intent(this, AnalyzerActivity::class.java))
         }
-
-        // BLE — nessuna selezione device necessaria, connessione automatica
-
         dialogView.findViewById<android.widget.Button>(R.id.btnExit).setOnClickListener {
-            dialog.dismiss(); DashForegroundService.stop(this)
-            SplashActivity.splashShown = false; finishAffinity()
+            dialog.dismiss()
+            DashForegroundService.stop(this)
+            SplashActivity.splashShown = false
+            finishAffinity()
         }
         dialogView.findViewById<android.widget.Button>(R.id.btnCancel).setOnClickListener {
             dialog.dismiss()
@@ -487,9 +457,8 @@ class MainActivity : AppCompatActivity() {
         dialogView.findViewById<android.widget.Button>(R.id.btnSave).setOnClickListener {
             val idAnt  = editIdAnt.text.toString().trim().uppercase()
             val idPost = editIdPost.text.toString().trim().uppercase()
-            viewModel.saveSettings(this, idAnt, idPost)
+            viewModel.saveSettings(this, idAnt, idPost, dashService)
             prefs.edit().putBoolean(DashViewModel.PREF_MOTO_MODE, switchMoto.isChecked).apply()
-            if (switchSim.isChecked) viewModel.startSimulation() else viewModel.stopSimulation()
             val selectedLangTag = langOptions[spinnerLanguage.selectedItemPosition].second
             val newLocales = if (selectedLangTag.isEmpty())
                 androidx.core.os.LocaleListCompat.getEmptyLocaleList()
@@ -510,25 +479,24 @@ class MainActivity : AppCompatActivity() {
             setPadding(24, 24, 24, 24)
         }
         val scroll = android.widget.ScrollView(this).apply {
-            addView(tv)
-            setBackgroundColor(0xFF0A0A0A.toInt())
+            addView(tv); setBackgroundColor(0xFF0A0A0A.toInt())
         }
-        val dialog = android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this)
             .setTitle("Log connessioni")
             .setView(scroll)
             .setPositiveButton("CHIUDI") { d, _ -> d.dismiss() }
             .setNegativeButton("PULISCI") { d, _ -> AppLog.clear(); d.dismiss() }
-            .create()
-        dialog.show()
-        // Scrolla in fondo automaticamente
-        scroll.post { scroll.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+            .create().also { dlg ->
+                dlg.show()
+                scroll.post { scroll.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+            }
     }
 
     private fun updateLogStatus(
         txtLogStatus: android.widget.TextView,
         btnToggleLog: android.widget.Button
     ) {
-        if (sessionLogger.isLogging) {
+        if (dashService?.isLogging() == true) {
             txtLogStatus.text = getString(R.string.log_recording)
             txtLogStatus.setTextColor(0xFF00CC44.toInt())
             btnToggleLog.text = getString(R.string.btn_stop)
