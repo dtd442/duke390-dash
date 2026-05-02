@@ -43,6 +43,34 @@ Connects via Bluetooth LE to an OBD2 adapter and TPMS sensors, logging telemetry
 
 ---
 
+## Usage
+
+**Long press** anywhere on the dashboard to open the Settings panel. From there you can:
+
+- Enter your TPMS sensor IDs
+- Start / stop telemetry recording
+- View the debug log (connection events, BLE packets, OBD responses)
+- Calibrate the G-force sensor offset (keep the bike upright and tap Set Offset)
+- Enable simulation mode (fake data, no hardware needed)
+- Switch app language
+- Exit the app
+
+**Quick Settings tile** — add the Duke 390 Dash tile to your notification shade to start/stop recording without opening the app.
+
+---
+
+## Output Files
+
+The app saves files to your phone's **Downloads** folder automatically.
+
+### 📊 Telemetry — `duke390_YYYY-MM-DD_HH-mm-ss.csv` + `.json`
+Recorded while logging is active (start/stop from Settings or Quick Settings tile). Contains all OBD2 channels, TPMS pressure and temperature, G-force and GPS. Use the included `analyzer.html` to visualize the JSON file in your browser — no server needed, just open it locally.
+
+### 🔧 Debug log — `duke390_log_YYYY-MM-DD_HH-mm-ss.txt`
+Saved automatically on every app run. Contains all BLE connection events, OBD raw responses, TPMS packets, errors and timing. Useful for diagnosing connection problems or finding your TPMS sensor IDs (they appear in the log the first time the sensors are detected). You can also view it live inside the app: Settings → **Show Log**.
+
+---
+
 ## Architecture
 
 ```
