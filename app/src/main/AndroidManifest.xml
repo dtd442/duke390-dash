@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
@@ -15,6 +16,17 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!--
+        ACCESS_BACKGROUND_LOCATION — obbligatorio su Android 10+ per ricevere
+        aggiornamenti GPS quando lo schermo è spento o l'app è in background.
+        Senza questo il sistema throttola il GPS a ~una volta ogni 10 minuti.
+        Deve essere richiesto SEPARATAMENTE da ACCESS_FINE_LOCATION a runtime:
+        dopo aver ottenuto ACCESS_FINE_LOCATION, mostra una spiegazione e poi
+        lancia requestPermissions con ACCESS_BACKGROUND_LOCATION da solo.
+        Android porta l'utente direttamente alla schermata "Consenti sempre" nelle
+        impostazioni di sistema — non si può fare inline come gli altri permessi.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -57,12 +69,17 @@
             android:windowSoftInputMode="stateHidden"
             android:theme="@style/Theme.Duke390Dash.NoAnimation"/>
 
+        <!--
+            foregroundServiceType="connectedDevice|location":
+            - connectedDevice: BLE / OBD (era già presente)
+            - location: necessario per usare LocationManager in un ForegroundService
+              su Android 10+. Senza questo il GPS nel service viene ignorato/throttolato.
+        -->
         <service
             android:name=".DashForegroundService"
-            android:foregroundServiceType="connectedDevice"
+            android:foregroundServiceType="connectedDevice|location"
             android:exported="false" />
 
-        <!-- Tile pannello rapido — mostra stato running e toglia registrazione telemetria -->
         <service
             android:name=".DashTileService"
             android:label="Duke 390"
