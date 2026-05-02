@@ -26,6 +26,10 @@ class TpmsManager(private val context: Context) {
         const val TAG = "TpmsManager"
         const val TPMS_UUID = "0000fbb0-0000-1000-8000-00805f9b34fb"
 
+        // FIX 1: default ID usati quando le prefs contengono stringhe vuote
+        const val DEFAULT_ID_ANT  = "13912F"
+        const val DEFAULT_ID_POST = "238D2A"
+
         // Stale warning: ! giallo se non riceve da questi intervalli
         const val STALE_ANT_MS   = 3 * 60 * 1000L   // 3 minuti
         const val STALE_POST_MS  = 5 * 60 * 1000L   // 5 minuti
@@ -54,11 +58,13 @@ class TpmsManager(private val context: Context) {
     // ─────────────────────────────────────────────
 
     fun start(idAnt: String, idPost: String) {
-        this.idAnt  = idAnt
-        this.idPost = idPost
+        // FIX 1: se arrivano stringhe vuote dalle prefs usiamo i default,
+        // così il matching non cerca mai un ID vuoto che non matcha nessun advertisement
+        this.idAnt  = idAnt.trim().uppercase().takeIf  { it.isNotBlank() } ?: DEFAULT_ID_ANT
+        this.idPost = idPost.trim().uppercase().takeIf { it.isNotBlank() } ?: DEFAULT_ID_POST
         startScanner()
         startStaleChecker()
-        AppLog.add(TAG, "Avviato — ant=$idAnt post=$idPost")
+        AppLog.add(TAG, "Avviato — ant=${this.idAnt} post=${this.idPost}")
     }
 
     fun stop() {
@@ -184,18 +190,20 @@ class TpmsManager(private val context: Context) {
                 else               -> 1
             }
 
-            val now         = System.currentTimeMillis()
-            val pressKpa    = (ByteBuffer.wrap(raw, 6, 4)
+            val now      = System.currentTimeMillis()
+            val pressKpa = (ByteBuffer.wrap(raw, 6, 4)
                 .order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL) / 1000f
-            val tempC       = (ByteBuffer.wrap(raw, 10, 4)
-                .order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL) / 100f
-            val battery     = raw[14].toInt() and 0xFF
-            val alarm       = (raw[15].toInt() and 0xFF) != 0
-            val pressureBar = pressKpa / 100f
+            // FIX 2: temperatura come int32 signed — i valori negativi (sotto zero)
+            // venivano trasformati in decine di migliaia di gradi con il cast unsigned
+            val tempC        = ByteBuffer.wrap(raw, 10, 4)
+                .order(ByteOrder.LITTLE_ENDIAN).int / 100f
+            val battery      = raw[14].toInt() and 0xFF
+            val alarm        = (raw[15].toInt() and 0xFF) != 0
+            val pressureBar  = pressKpa / 100f
 
             val tpms = TpmsData(
                 pressureBar  = pressureBar,
-                tempC        = tempC.toFloat(),
+                tempC        = tempC,
                 batteryPct   = battery,
                 alarm        = alarm,
                 staleWarning = false
