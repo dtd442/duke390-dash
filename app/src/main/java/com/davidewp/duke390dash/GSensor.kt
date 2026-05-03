@@ -29,7 +29,14 @@ import kotlin.math.abs
  */
 class GSensor(
     private val context: Context,
-    private val onUpdate: (gLateral: Float, gyroX: Float, gyroY: Float, gyroZ: Float) -> Unit
+    private val onUpdate: (
+        gLateral: Float,    // accel X
+        gLong: Float,       // accel Y ← nuovo (beccheggio: frena/accelera)
+        gVert: Float,       // accel Z ← nuovo (verticale: dossi, buche)
+        gyroX: Float,
+        gyroY: Float,
+        gyroZ: Float
+    ) -> Unit
 ) : SensorEventListener {
 
     companion object {
@@ -49,6 +56,8 @@ class GSensor(
 
     // Accelerometro
     private var filteredX = 0f
+    private var filteredY = 0f  // ← nuovo
+    private var filteredZ = 0f  // ← nuovo
     private var offset    = 0f
 
     // Giroscopio — tutti e 3 gli assi filtrati
@@ -92,7 +101,16 @@ class GSensor(
         val g = (filteredX - offset) / SensorManager.GRAVITY_EARTH
         return if (abs(g) < ACCEL_DEADBAND) 0f else g
     }
+    private fun currentGLong(): Float {
+        val g = filteredY / SensorManager.GRAVITY_EARTH
+        return if (abs(g) < ACCEL_DEADBAND) 0f else g
+    }
 
+    private fun currentGVert(): Float {
+        // In condizioni normali Z ≈ 1g (gravità) — sottrai 1 per avere lo scostamento
+        val g = (filteredZ / SensorManager.GRAVITY_EARTH) - 1f
+        return if (abs(g) < ACCEL_DEADBAND) 0f else g
+    }
     // ── Dead-band giroscopio ──────────────────────────────────────────────────
     private fun applyGyroBand(v: Float) = if (abs(v) < GYRO_DEADBAND) 0f else v
 
@@ -101,8 +119,12 @@ class GSensor(
 
             Sensor.TYPE_ACCELEROMETER -> {
                 filteredX = ACCEL_ALPHA * event.values[0] + (1f - ACCEL_ALPHA) * filteredX
+                filteredY = ACCEL_ALPHA * event.values[1] + (1f - ACCEL_ALPHA) * filteredY
+                filteredZ = ACCEL_ALPHA * event.values[2] + (1f - ACCEL_ALPHA) * filteredZ
                 onUpdate(
                     currentGLateral(),
+                    currentGLong(),
+                    currentGVert(),
                     applyGyroBand(filteredGyroX),
                     applyGyroBand(filteredGyroY),
                     applyGyroBand(filteredGyroZ)
@@ -115,6 +137,8 @@ class GSensor(
                 filteredGyroZ = GYRO_ALPHA * event.values[2] + (1f - GYRO_ALPHA) * filteredGyroZ
                 onUpdate(
                     currentGLateral(),
+                    currentGLong(),
+                    currentGVert(),
                     applyGyroBand(filteredGyroX),
                     applyGyroBand(filteredGyroY),
                     applyGyroBand(filteredGyroZ)

@@ -43,7 +43,7 @@ class SessionLogger(private val context: Context) {
                     "post_pressure_bar,post_temp_c,post_battery_pct,post_alarm," +
                     "tps_pct,engine_load_pct,iat_c,ignition_advance_deg,fuel_l100," +
                     "fuel_trim_pct,coolant_temp_c,speed_kmh,rpm,obd_connected," +
-                    "g_lateral,gyro_x,gyro_y,gyro_z," +
+                    "g_lateral,g_long,g_vert,gyro_x,gyro_y,gyro_z," +
                     "latitude,longitude,altitude_m,bearing_deg,gps_speed_kmh,gps_accuracy_m\n"
 
             csvOutputStream?.write(header.toByteArray())
@@ -94,6 +94,8 @@ class SessionLogger(private val context: Context) {
     fun log(
         state:    DashState,
         gLateral: Float,
+        gLong:    Float = 0f,   // ← nuovo: beccheggio accelerometro Y
+        gVert:    Float = 0f,   // ← nuovo: verticale accelerometro Z
         gyroX:    Float = 0f,
         gyroY:    Float = 0f,
         gyroZ:    Float = 0f,
@@ -102,8 +104,8 @@ class SessionLogger(private val context: Context) {
         if (!isLogging) return
         val ts = tsSdf.format(Date())
         try {
-            writeCsvRow(ts, state, gLateral, gyroX, gyroY, gyroZ, gps)
-            writeJsonEntry(ts, state, gLateral, gyroX, gyroY, gyroZ, gps)
+            writeCsvRow(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps)
+            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps)
         } catch (e: Exception) {
             Log.e(TAG, "Errore scrittura log: ${e.message}")
         }
@@ -131,7 +133,8 @@ class SessionLogger(private val context: Context) {
 
     private fun writeCsvRow(
         ts: String, state: DashState,
-        gLateral: Float, gyroX: Float, gyroY: Float, gyroZ: Float,
+        gLateral: Float, gLong: Float, gVert: Float,
+        gyroX: Float, gyroY: Float, gyroZ: Float,
         gps: GpsManager.GpsData
     ) {
         val ant  = state.tpmsAnt
@@ -145,7 +148,7 @@ class SessionLogger(private val context: Context) {
                 "${obd.ignitionAdvance},${obd.fuelConsumptionL100}," +
                 "${obd.fuelTrimPct},${obd.coolantTempCelsius}," +
                 "${obd.speedKmh},${obd.rpmValue},${obd.connected}," +
-                "$gLateral,$gyroX,$gyroY,$gyroZ," +
+                "$gLateral,$gLong,$gVert,$gyroX,$gyroY,$gyroZ," +
                 "${gps.latitude},${gps.longitude},${gps.altitudeM},${gps.bearingDeg}," +
                 "${gps.speedKmh},${gps.accuracyM}\n"
 
@@ -155,7 +158,8 @@ class SessionLogger(private val context: Context) {
 
     private fun writeJsonEntry(
         ts: String, state: DashState,
-        gLateral: Float, gyroX: Float, gyroY: Float, gyroZ: Float,
+        gLateral: Float, gLong: Float, gVert: Float,
+        gyroX: Float, gyroY: Float, gyroZ: Float,
         gps: GpsManager.GpsData
     ) {
         val ant  = state.tpmsAnt
@@ -196,6 +200,8 @@ class SessionLogger(private val context: Context) {
             })
             put("sensors", JSONObject().apply {
                 put("g_lateral",      gLateral)        // accelerometro asse X in G
+                put("g_long",    gLong)   // ← beccheggio: positivo = accelerazione, negativo = frenata
+                put("g_vert",    gVert)   // ← verticale: positivo = dosso, negativo = buca
                 put("gyro_x",         gyroX)           // roll  rad/s — lean angle sul manubrio
                 put("gyro_y",         gyroY)           // pitch rad/s — beccheggio
                 put("gyro_z",         gyroZ)           // yaw   rad/s — imbardata
