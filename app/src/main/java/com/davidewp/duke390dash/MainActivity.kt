@@ -8,14 +8,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -53,42 +50,21 @@ class MainActivity : AppCompatActivity() {
 
     private var sweepDone = false
 
-    // ── Sensore di prossimità ─────────────────────────────────────────────────
-    // Logica: coperto (in tasca) → schermo normale con lock
-    //         scoperto (sulla dash) → schermo sempre acceso, no lock
-    private lateinit var sensorManager: SensorManager
-    private var proximitySensor: Sensor? = null
-    private var isCovered = false
-
-    private val proximityListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-            val covered = event.values[0] < (proximitySensor?.maximumRange ?: 5f)
-            if (covered == isCovered) return
-            isCovered = covered
-            applyScreenPolicy()
-        }
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    // ── Long press a 3 dita per aprire i settings ─────────────────────────────
+    // Richiede almeno 3 dita tenute premute per LONG_PRESS_MS ms.
+    // Un tocco accidentale con 1-2 dita (tasca, vibrazioni) non fa nulla.
+    private companion object {
+        const val LONG_PRESS_MS = 800L  // ms di attesa
+        const val MIN_FINGERS   = 3     // dita minime
     }
 
-    /**
-     * Scoperto (sulla dash) → schermo sempre acceso, no lock
-     * Coperto  (in tasca)   → flag rimossi → schermo si spegne, lock normale
-     */
-    private fun applyScreenPolicy() {
-        if (isCovered) {
-            window.clearFlags(
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
-        } else {
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
+    private val longPressHandler   = Handler(Looper.getMainLooper())
+    private var longPressTriggered = false
+
+    private val longPressRunnable = Runnable {
+        if (!longPressTriggered) {
+            longPressTriggered = true
+            showSettingsDialog()
         }
     }
 
@@ -107,9 +83,13 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // I flag schermo vengono gestiti dinamicamente dal sensore di prossimità.
-        // Partiamo senza flag — applyScreenPolicy() li aggiunge non appena
-        // il sensore conferma che il telefono è scoperto.
+        // ── Schermo sempre acceso, no lock, no standby ────────────────────────
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
 
         DashForegroundService.start(this)
         bindService(
@@ -118,6 +98,11 @@ class MainActivity : AppCompatActivity() {
             Context.BIND_AUTO_CREATE
         )
 
+        // ── Fullscreen totale — gesture di sistema disabilitate ───────────────
+        // BEHAVIOR_SHOW_BARS_BY_TOUCH: le barre di sistema NON compaiono con
+        // uno swipe dal bordo (vibrazioni, tasca) — richiedono un tocco esplicito.
+        // Questo blocca efficacemente la tendina delle notifiche e la nav bar
+        // durante la guida.
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -127,8 +112,7 @@ class MainActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             hide(WindowInsetsCompat.Type.navigationBars())
             hide(WindowInsetsCompat.Type.statusBars())
-            systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH
         }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -144,16 +128,37 @@ class MainActivity : AppCompatActivity() {
             android.Manifest.permission.POST_NOTIFICATIONS
         ))
 
-        binding.root.setOnLongClickListener { showSettingsDialog(); true }
+        // ── Long press a 3 dita ───────────────────────────────────────────────
+        // Intercetta i tocchi sulla root view. Se almeno MIN_FINGERS dita
+        // restano premute per LONG_PRESS_MS ms consecutivi → apre i settings.
+        // Al primo dito alzato il timer viene cancellato.
+        binding.root.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (event.pointerCount >= MIN_FINGERS) {
+                        longPressTriggered = false
+                        longPressHandler.removeCallbacks(longPressRunnable)
+                        longPressHandler.postDelayed(longPressRunnable, LONG_PRESS_MS)
+                    }
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_POINTER_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    longPressHandler.removeCallbacks(longPressRunnable)
+                }
+            }
+            false  // non consuma l'evento — la UI risponde normalmente
+        }
 
-        // ── Collect dashState dal ViewModel (che espone il companion StateFlow) ─
+        // ── Collect dashState ─────────────────────────────────────────────────
         lifecycleScope.launch {
             viewModel.dashState.collect { state ->
                 if (sweepDone) updateUI(state)
             }
         }
 
-        // ── Collect gLateral per la UI ────────────────────────────────────────
+        // ── Collect gLateral ──────────────────────────────────────────────────
         lifecycleScope.launch {
             viewModel.gLateral.collect { gLateral ->
                 runOnUiThread { updateGSensor(gLateral) }
@@ -161,33 +166,28 @@ class MainActivity : AppCompatActivity() {
         }
 
         notifyTile()
-
-        // ── Sensore di prossimità ─────────────────────────────────────────────
-        sensorManager   = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
-        if (proximitySensor == null) {
-            // Dispositivo senza sensore di prossimità → comportamento fisso: schermo sempre acceso
-            applyScreenPolicy()  // isCovered=false → aggiunge tutti i flag
-        }
     }
 
     override fun onResume() {
         super.onResume()
         notifyTile()
-        // Registra il listener con SENSOR_DELAY_NORMAL — sufficiente per tasca/dash
-        proximitySensor?.let {
-            sensorManager.registerListener(proximityListener, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        proximitySensor?.let { sensorManager.unregisterListener(proximityListener) }
+        // Ripristina fullscreen dopo dialog o notifiche che riportano le barre
+        hideSystemBars()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && !sweepDone) runSweep()
+        if (hasFocus) hideSystemBars()
+    }
+
+    private fun hideSystemBars() {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            hide(WindowInsetsCompat.Type.navigationBars())
+            hide(WindowInsetsCompat.Type.statusBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH
+        }
     }
 
     // ─── Init N/A ─────────────────────────────────────────────────────────────
@@ -426,10 +426,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        longPressHandler.removeCallbacks(longPressRunnable)
         if (serviceBound) { unbindService(serviceConnection); serviceBound = false }
         AppLog.close()
         DashTileService.updateTile(this, running = true, logging = dashService?.isLogging() == true)
-        // Non stoppiamo il service se sta loggando — continua in background
         if (dashService?.isLogging() != true) {
             DashTileService.updateTile(this, running = false, logging = false)
             DashForegroundService.stop(this)
@@ -483,14 +483,12 @@ class MainActivity : AppCompatActivity() {
         editIdPost.setText(savedIdPost)
         switchMoto.isChecked = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
 
-        // Legge il service al momento dell'apertura del dialog per offset display
         val svcForOffset = dashService
         txtOffset.text = "offset: ${"%.2f".format(svcForOffset?.getGSensorOffsetG() ?: 0f)} G"
 
         updateLogStatus(txtLogStatus, btnToggleLog)
 
         btnSetOffset.setOnClickListener {
-            // FIX: legge dashService live — non la variabile catturata all'apertura
             val svc = dashService
             svc?.setGSensorOffset()
             txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
@@ -499,9 +497,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnToggleLog.setOnClickListener {
-            // FIX: legge dashService live dentro il listener invece di catturarlo
-            // all'apertura del dialog — evita la race condition sul binding asincrono
-            // che causava svc==null e startLogging() mai chiamato → JSON vuoto.
             val svc = dashService
             if (svc == null) {
                 txtLogStatus.text = getString(R.string.log_inactive)
