@@ -1,7 +1,7 @@
 package com.davidewp.duke390dash
 
+import androidx.activity.OnBackPressedCallback
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -26,7 +26,7 @@ class AnalyzerActivity : AppCompatActivity() {
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+        if (result.resultCode == RESULT_OK) {
             val uri = result.data?.data
             filePathCallback?.onReceiveValue(
                 if (uri != null) arrayOf(uri) else arrayOf()
@@ -40,6 +40,16 @@ class AnalyzerActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (webView.canGoBack()) webView.goBack()
+                    else finish()
+                }
+            }
+        )
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -83,17 +93,13 @@ class AnalyzerActivity : AppCompatActivity() {
         webView.loadUrl("file:///android_asset/analyzer.html")
     }
 
-    @Suppress("OVERRIDE_DEPRECATION")
-    override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack()
-        else super.onBackPressed()
-    }
+
 
     override fun onDestroy() {
         super.onDestroy()
         webView.destroy()
     }
-
+    @Suppress("unused")
     inner class AndroidBridge {
         @JavascriptInterface
         fun closePage() {
