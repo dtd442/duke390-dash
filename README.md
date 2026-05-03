@@ -16,9 +16,8 @@ Connects via Bluetooth LE to an OBD2 adapter and TPMS sensors, logging telemetry
 - **GPS telemetry** — position, speed, native altitude and bearing logged alongside OBD data; network provider fallback for fast initial fix
 - **Background GPS** — GPS and all sensors remain active with screen off thanks to `ACCESS_BACKGROUND_LOCATION` and `foregroundServiceType="connectedDevice|location"`
 - **Session logging** — CSV and JSON saved to Downloads folder, start/stop from UI or Quick Settings tile; logged at fixed 2 Hz independent of OBD polling rate
-- **Quick Settings tile** — toggle recording from the notification shade without opening the app
+- **Quick Settings tile** — start and stop recording directly from the notification shade, even with the app fully closed; the service runs autonomously in background and shuts itself down when recording stops
 - **Foreground service** — owns all sensor managers (OBD, TPMS, GPS, IMU); keeps everything alive with screen off via `PARTIAL_WAKE_LOCK`
-- **Simulation mode** — fake data for UI development without a bike
 
 ---
 
@@ -37,7 +36,7 @@ Connects via Bluetooth LE to an OBD2 adapter and TPMS sensors, logging telemetry
 1. Clone the repo and open in **Android Studio Hedgehog** or newer
 2. Build and install on your Android device
 3. Grant permissions when prompted: **Bluetooth**, **Location**, **Notifications**
-4. After granting Location, also grant **"Allow all the time"** for background GPS — Android will open the system settings screen directly
+4. After granting Location, also grant **"Allow all the time"** for background GPS — Android will open the system settings screen directly. This is required for the tile to work with the app closed
 5. Mount phone on handlebar and start the bike
 6. Long press anywhere on the dashboard to open **Settings**
 7. Enter your TPMS sensor IDs (6-character hex, e.g. `13912F` and `238D2A`)
@@ -54,11 +53,10 @@ Connects via Bluetooth LE to an OBD2 adapter and TPMS sensors, logging telemetry
 - Start / stop telemetry recording
 - View the debug log (connection events, BLE packets, OBD responses)
 - Calibrate the G-force sensor offset (keep the bike upright and tap Set Offset)
-- Enable simulation mode (fake data, no hardware needed)
 - Switch app language
 - Exit the app
 
-**Quick Settings tile** — add the Duke 390 Dash tile to your notification shade to start/stop recording without opening the app.
+**Quick Settings tile** — add the Duke 390 Dash tile to your notification shade. Tap once to start recording (launches the service if not running), tap again to stop recording and shut everything down. Works with the app fully closed and screen off.
 
 ---
 
@@ -82,14 +80,13 @@ DashForegroundService   — source of truth; owns ALL managers
   ├── ObdManager        — BLE GATT client, ELM327 over vLinker MC-IOS
   ├── GpsManager        — LocationManager (GPS + Network fallback), background-safe
   ├── GSensor           — accelerometer X axis + gyroscope all 3 axes
-  ├── SimulationManager — fake data for UI testing
   └── SessionLogger     — CSV + JSON to Downloads (Android Q+ MediaStore)
                           fixed 2 Hz loop, independent of OBD polling rate
 
 DashViewModel           — read-only UI mirror; collects StateFlows from service companion object
 MainActivity            — main UI, View Binding, XML layouts; binds to service for controls
 AppLog                  — in-memory log + file, visible in Settings dialog
-DashTileService         — Quick Settings tile, toggle recording
+DashTileService         — Quick Settings tile; communicates directly with service via Intent
 ```
 
 Data flow:
@@ -98,6 +95,8 @@ TpmsManager ─┐
 ObdManager  ─┼─► combine() ─► _dashState (StateFlow companion) ─► loop log 2Hz ─► JSON/CSV
 GpsManager  ─┘                                                  ─► ViewModel ─► MainActivity UI
 GSensor ──────────────────────────────────────────────────────► _gLateral (StateFlow companion)
+
+Tile click ─► startService(ACTION_TOGGLE_LOG) ─► DashForegroundService.onStartCommand()
 ```
 
 ---
@@ -179,9 +178,9 @@ All three are logged raw so you can decide in post-processing.
 ## Known Issues / TODO
 
 - [ ] OBD adapter selection — currently hardcoded to `vLinker MC-IOS` by name. Plan: BLE scan with service UUID `000018f0` filter, device picker in settings, MAC saved to SharedPreferences
-- [ ] Quick Settings tile starts recording without opening the app (tile currently opens MainActivity)
 - [ ] `onCharacteristicChanged` deprecated on API 33+ — add new signature override
 - [ ] Occasional GATT disconnect (status=0) after ~15–20 minutes — vLinker internal timeout suspected, auto-reconnect in place
+- [ ] Starting the service from the tile requires "Allow all the time" location permission — on Android 14+ starting a `foregroundServiceType=location` service from background without this permission causes a crash
 - [ ] UI layout redesign pending
 
 ---
@@ -190,17 +189,17 @@ All three are logged raw so you can decide in post-processing.
 
 ```xml
 BLUETOOTH_SCAN
-BLUETOOTH_CONNECT
-WAKE_LOCK
-FOREGROUND_SERVICE
-FOREGROUND_SERVICE_CONNECTED_DEVICE
-FOREGROUND_SERVICE_LOCATION
-POST_NOTIFICATIONS
-ACCESS_FINE_LOCATION
-ACCESS_COARSE_LOCATION
-ACCESS_BACKGROUND_LOCATION       <!-- required for GPS with screen off on Android 10+ -->
-WRITE_EXTERNAL_STORAGE           (maxSdkVersion 28)
-READ_EXTERNAL_STORAGE            (maxSdkVersion 32)
+        BLUETOOTH_CONNECT
+        WAKE_LOCK
+        FOREGROUND_SERVICE
+        FOREGROUND_SERVICE_CONNECTED_DEVICE
+        FOREGROUND_SERVICE_LOCATION
+        POST_NOTIFICATIONS
+        ACCESS_FINE_LOCATION
+        ACCESS_COARSE_LOCATION
+        ACCESS_BACKGROUND_LOCATION       <!-- required for GPS with screen off and tile usage without app -->
+        WRITE_EXTERNAL_STORAGE           (maxSdkVersion 28)
+        READ_EXTERNAL_STORAGE            (maxSdkVersion 32)
 ```
 
 ---
