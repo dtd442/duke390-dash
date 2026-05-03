@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.OutputStream
 import java.text.SimpleDateFormat
@@ -24,7 +23,9 @@ class SessionLogger(private val context: Context) {
 
     private var csvOutputStream:  OutputStream? = null
     private var jsonOutputStream: OutputStream? = null
-    private var jsonArray = JSONArray()
+
+    // Streaming JSON — nessun array in memoria
+    private var isFirstJsonEntry = true
 
     private val sdf   = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
     private val tsSdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
@@ -32,7 +33,7 @@ class SessionLogger(private val context: Context) {
     fun startSession() {
         if (isLogging) return
         val sessionName = "duke390_${sdf.format(Date())}"
-        jsonArray = JSONArray()
+        isFirstJsonEntry = true
         try {
             csvOutputStream  = openOutputStream("$sessionName.csv",  "text/csv")
             jsonOutputStream = openOutputStream("$sessionName.json", "application/json")
@@ -48,6 +49,10 @@ class SessionLogger(private val context: Context) {
             csvOutputStream?.write(header.toByteArray())
             csvOutputStream?.flush()
 
+            // Apre l'array JSON
+            jsonOutputStream?.write("[\n".toByteArray())
+            jsonOutputStream?.flush()
+
             isLogging = true
             Log.d(TAG, "Sessione avviata: $sessionName")
         } catch (e: Exception) {
@@ -61,7 +66,8 @@ class SessionLogger(private val context: Context) {
     fun stopSession() {
         if (!isLogging) return
         try {
-            jsonOutputStream?.write(jsonArray.toString(2).toByteArray())
+            // Chiude l'array JSON
+            jsonOutputStream?.write("\n]".toByteArray())
             jsonOutputStream?.flush()
             jsonOutputStream?.close()
             csvOutputStream?.close()
@@ -113,7 +119,8 @@ class SessionLogger(private val context: Context) {
             val uri = context.contentResolver.insert(
                 MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
             ) ?: throw Exception("MediaStore insert fallito per $fileName")
-            context.contentResolver.openOutputStream(uri, "wa")
+            // FIX: usa "w" invece di "wa" — più affidabile su Android 10–13
+            context.contentResolver.openOutputStream(uri, "w")
                 ?: throw Exception("openOutputStream null per $fileName")
         } else {
             val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -127,9 +134,9 @@ class SessionLogger(private val context: Context) {
         gLateral: Float, gyroX: Float, gyroY: Float, gyroZ: Float,
         gps: GpsManager.GpsData
     ) {
-        val ant = state.tpmsAnt
+        val ant  = state.tpmsAnt
         val post = state.tpmsPost
-        val obd = state.obd
+        val obd  = state.obd
 
         val row = "$ts," +
                 "${ant.pressureBar},${ant.tempC},${ant.batteryPct},${ant.alarm}," +
@@ -188,19 +195,26 @@ class SessionLogger(private val context: Context) {
                 put("connected",            obd.connected)
             })
             put("sensors", JSONObject().apply {
-                put("g_lateral",    gLateral)   // accelerometro asse X in G
-                put("gyro_x",       gyroX)      // roll  rad/s — lean angle sul manubrio
-                put("gyro_y",       gyroY)      // pitch rad/s — beccheggio
-                put("gyro_z",       gyroZ)      // yaw   rad/s — imbardata
-                put("latitude",     gps.latitude)
-                put("longitude",    gps.longitude)
-                put("altitude_m",   gps.altitudeM)   // altitudine GPS nativa
-                put("bearing_deg",  gps.bearingDeg)  // direzione di marcia
+                put("g_lateral",      gLateral)        // accelerometro asse X in G
+                put("gyro_x",         gyroX)           // roll  rad/s — lean angle sul manubrio
+                put("gyro_y",         gyroY)           // pitch rad/s — beccheggio
+                put("gyro_z",         gyroZ)           // yaw   rad/s — imbardata
+                put("latitude",       gps.latitude)
+                put("longitude",      gps.longitude)
+                put("altitude_m",     gps.altitudeM)   // altitudine GPS nativa
+                put("bearing_deg",    gps.bearingDeg)  // direzione di marcia
                 put("gps_speed_kmh",  gps.speedKmh)
                 put("gps_accuracy_m", gps.accuracyM)
                 put("gps_available",  gps.available)
             })
         }
-        jsonArray.put(entry)
+
+        // FIX: scrittura streaming — ogni entry viene flushata subito su disco.
+        // In questo modo se il processo viene killato i dati già scritti sono salvi,
+        // invece di perdersi tutti insieme come succedeva con jsonArray in memoria.
+        val prefix = if (isFirstJsonEntry) "" else ",\n"
+        isFirstJsonEntry = false
+        jsonOutputStream?.write("$prefix${entry.toString(2)}".toByteArray())
+        jsonOutputStream?.flush()
     }
 }

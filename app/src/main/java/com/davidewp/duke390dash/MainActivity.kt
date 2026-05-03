@@ -8,6 +8,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -49,6 +53,44 @@ class MainActivity : AppCompatActivity() {
 
     private var sweepDone = false
 
+    // ── Sensore di prossimità ─────────────────────────────────────────────────
+    // Logica: coperto (in tasca) → schermo normale con lock
+    //         scoperto (sulla dash) → schermo sempre acceso, no lock
+    private lateinit var sensorManager: SensorManager
+    private var proximitySensor: Sensor? = null
+    private var isCovered = false
+
+    private val proximityListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val covered = event.values[0] < (proximitySensor?.maximumRange ?: 5f)
+            if (covered == isCovered) return
+            isCovered = covered
+            applyScreenPolicy()
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    /**
+     * Scoperto (sulla dash) → schermo sempre acceso, no lock
+     * Coperto  (in tasca)   → flag rimossi → schermo si spegne, lock normale
+     */
+    private fun applyScreenPolicy() {
+        if (isCovered) {
+            window.clearFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        } else {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+    }
 
     // ── Permessi ──────────────────────────────────────────────────────────────
     private val requestPermissions = registerForActivityResult(
@@ -65,12 +107,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-        )
+        // I flag schermo vengono gestiti dinamicamente dal sensore di prossimità.
+        // Partiamo senza flag — applyScreenPolicy() li aggiunge non appena
+        // il sensore conferma che il telefono è scoperto.
 
         DashForegroundService.start(this)
         bindService(
@@ -122,6 +161,28 @@ class MainActivity : AppCompatActivity() {
         }
 
         notifyTile()
+
+        // ── Sensore di prossimità ─────────────────────────────────────────────
+        sensorManager   = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        if (proximitySensor == null) {
+            // Dispositivo senza sensore di prossimità → comportamento fisso: schermo sempre acceso
+            applyScreenPolicy()  // isCovered=false → aggiunge tutti i flag
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        notifyTile()
+        // Registra il listener con SENSOR_DELAY_NORMAL — sufficiente per tasca/dash
+        proximitySensor?.let {
+            sensorManager.registerListener(proximityListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        proximitySensor?.let { sensorManager.unregisterListener(proximityListener) }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -363,9 +424,6 @@ class MainActivity : AppCompatActivity() {
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
-    override fun onResume()  { super.onResume();  notifyTile() }
-    override fun onPause()   { super.onPause() }
-
     override fun onDestroy() {
         super.onDestroy()
         if (serviceBound) { unbindService(serviceConnection); serviceBound = false }
@@ -425,11 +483,15 @@ class MainActivity : AppCompatActivity() {
         editIdPost.setText(savedIdPost)
         switchMoto.isChecked = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
 
+        // Legge il service al momento dell'apertura del dialog per offset display
+        val svcForOffset = dashService
+        txtOffset.text = "offset: ${"%.2f".format(svcForOffset?.getGSensorOffsetG() ?: 0f)} G"
+
         updateLogStatus(txtLogStatus, btnToggleLog)
 
-        val svc = dashService
-        txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
         btnSetOffset.setOnClickListener {
+            // FIX: legge dashService live — non la variabile catturata all'apertura
+            val svc = dashService
             svc?.setGSensorOffset()
             txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
             btnSetOffset.text = getString(R.string.btn_offset_saved)
@@ -437,7 +499,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnToggleLog.setOnClickListener {
-            if (svc?.isLogging() == true) svc.stopLogging() else svc?.startLogging()
+            // FIX: legge dashService live dentro il listener invece di catturarlo
+            // all'apertura del dialog — evita la race condition sul binding asincrono
+            // che causava svc==null e startLogging() mai chiamato → JSON vuoto.
+            val svc = dashService
+            if (svc == null) {
+                txtLogStatus.text = getString(R.string.log_inactive)
+                return@setOnClickListener
+            }
+            if (svc.isLogging()) svc.stopLogging() else svc.startLogging()
             notifyTile()
             updateLogStatus(txtLogStatus, btnToggleLog)
         }
