@@ -192,16 +192,18 @@
         <span class="pt">G-FORCE</span>
         <div class="pv">
           <span class="pc" id="c4" style="color:var(--cy)">0.000</span><span class="pu">g LAT</span>
-          <span class="pc s" id="c5" style="color:var(--ye)">0.000</span><span class="pu">g FRONT</span>
+          <span class="pc s" id="c5" style="color:var(--ye)">0.000</span><span class="pu">rad/s PITCH</span>
         </div>
       </div>
       <div class="pm">
         <div class="pmi">MAX LAT <b id="m5">—</b>g</div>
-        <div class="pmi">MAX FRONT <b id="m6">—</b>g</div>
+        <div class="pmi">MAX PITCH <b id="m6">—</b> rad/s</div>
       </div>
       <div class="leg" id="leg2">
-        <div class="legi" data-panel="2" data-key="glat"><div class="legc" style="background:var(--cy)"></div>LATERALE</div>
-        <div class="legi" data-panel="2" data-key="gfr"><div class="legc" style="background:var(--ye)"></div>FRONTALE</div>
+        <div class="legi" data-panel="2" data-key="glat"><div class="legc" style="background:var(--cy)"></div>LATERALE g</div>
+        <div class="legi" data-panel="2" data-key="gfr"><div class="legc" style="background:var(--ye)"></div>PITCH rad/s</div>
+        <div class="legi" data-panel="2" data-key="gyroX"><div class="legc" style="background:var(--gn)"></div>ROLL rad/s</div>
+        <div class="legi" data-panel="2" data-key="gyroZ"><div class="legc" style="background:var(--re)"></div>YAW rad/s</div>
       </div>
       <div class="cc"><canvas class="base" id="b2"></canvas><canvas class="over" id="o2"></canvas></div>
     </div>
@@ -648,21 +650,30 @@
 
     // G-sensor — non OBD, non va interpolato allo stesso modo
     CH.glat   = F.map(f => gv(f,'sensors.g_lateral',0));
-    CH.gfr    = F.map(f => gv(f,'sensors.g_front',0));
+    CH.gfr    = F.map(f => gv(f,'sensors.gyro_y',0));   // pitch (beccheggio) — era g_front hardcoded a 0
+
+    // Giroscopio — tutti e 3 gli assi in rad/s
+    CH.gyroX  = F.map(f => gv(f,'sensors.gyro_x',0));   // roll  — lean angle sul manubrio
+    CH.gyroY  = F.map(f => gv(f,'sensors.gyro_y',0));   // pitch — beccheggio
+    CH.gyroZ  = F.map(f => gv(f,'sensors.gyro_z',0));   // yaw   — imbardata
 
     // GPS
     CH.lat    = F.map(f => { const v=gv(f,'sensors.latitude',null); return (v && Math.abs(v)>0.001)?v:null; });
     CH.lon    = F.map(f => { const v=gv(f,'sensors.longitude',null); return (v && Math.abs(v)>0.001)?v:null; });
     CH.gspd   = F.map(f => gv(f,'sensors.gps_speed_kmh',0));
     CH.gacc   = F.map(f => gv(f,'sensors.gps_accuracy_m',999));
+    CH.bearing= F.map(f => gv(f,'sensors.bearing_deg',0));
+    CH.gpsAvail = F.map(f => gv(f,'sensors.gps_available',false));
 
-    // Altitudine da pressione barometrica: formula ISA standard
-    // h = 44330 * (1 - (P/101.325)^0.1903)
-    const P0 = 101.325;
+    // Altitudine — usa il dato GPS nativo se disponibile,
+    // fallback alla formula ISA da baro_kpa per JSON vecchi senza altitude_m
     CH.alt = F.map(f => {
+      const gpsAlt = gv(f,'sensors.altitude_m',null);
+      if (gpsAlt !== null && gpsAlt !== 0) return gpsAlt;
+      // fallback ISA da pressione barometrica
       const p = gv(f,'obd.baro_kpa',0);
       if (p < 50 || p > 108) return null;
-      return 44330 * (1 - Math.pow(p / P0, 0.1903));
+      return 44330 * (1 - Math.pow(p / 101.325, 0.1903));
     });
     // interpola i null nell'altitudine
     CH.alt = interpolateGaps(CH.alt, v => v !== null);
@@ -834,15 +845,17 @@
         break;
       }
 
-      // 2: G-force
+      // 2: G-force + Giroscopio
       case 2: {
-        const all  = CH.glat.concat(CH.gfr);
+        const all  = CH.glat.concat(CH.gfr).concat(CH.gyroX).concat(CH.gyroZ);
         const gmin = Math.min(MIN(all),-0.01)*1.2;
         const gmax = Math.max(MAX(all), 0.01)*1.2;
         drawGrid(ctx,W,H,gmin,gmax,4);
         drawZero(ctx,W,H,gmin,gmax);
-        if (on('glat')) { drawFill(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0'); drawLine(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0',2); }
-        if (on('gfr'))  { drawLine(ctx,CH.gfr,W,H,gmin,gmax,'#f0c040',1.5); }
+        if (on('glat'))  { drawFill(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0'); drawLine(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0',2); }
+        if (on('gfr'))   { drawLine(ctx,CH.gfr,W,H,gmin,gmax,'#f0c040',1.5); }
+        if (on('gyroX')) { drawLine(ctx,CH.gyroX,W,H,gmin,gmax,'#00d47a',1.5); }
+        if (on('gyroZ')) { drawLine(ctx,CH.gyroZ,W,H,gmin,gmax,'#ff3348',1.5); }
         break;
       }
 
@@ -950,10 +963,12 @@
     dot(1, accelV, 0, 100, '#00c8e0', 'accel');
     dot(1, CH.tps,  0, 100, '#00d47a', 'tps');
 
-    const all  = CH.glat.concat(CH.gfr);
+    const all  = CH.glat.concat(CH.gfr).concat(CH.gyroX).concat(CH.gyroZ);
     const gmin = Math.min(MIN(all),-0.01)*1.2, gmax = Math.max(MAX(all),0.01)*1.2;
-    dot(2, CH.glat, gmin, gmax, '#00c8e0', 'glat');
-    dot(2, CH.gfr,  gmin, gmax, '#f0c040', 'gfr');
+    dot(2, CH.glat,  gmin, gmax, '#00c8e0', 'glat');
+    dot(2, CH.gfr,   gmin, gmax, '#f0c040', 'gfr');
+    dot(2, CH.gyroX, gmin, gmax, '#00d47a', 'gyroX');
+    dot(2, CH.gyroZ, gmin, gmax, '#ff3348', 'gyroZ');
 
     const pAll = CH.pant.concat(CH.ppost).filter(v=>v!=null);
     if (pAll.length>=2) {
@@ -987,7 +1002,7 @@
     $('c3').textContent   = f1(CH.tps[idx]    || 0);
     $('c3b').textContent  = f1(CH.load[idx]   || 0);
     $('c4').textContent   = f3(gv(f,'sensors.g_lateral',0));
-    $('c5').textContent   = f3(gv(f,'sensors.g_front',0));
+    $('c5').textContent   = f3(gv(f,'sensors.gyro_y',0));
 
     $('c6').textContent   = CH.pant[idx]  != null ? f2(CH.pant[idx])  : '—';
     $('c7').textContent   = CH.ppost[idx] != null ? f2(CH.ppost[idx]) : '—';
@@ -1003,7 +1018,7 @@
 
     // GPS + altitudine
     const altNow = CH.alt[idx];
-
+    
 
     updateMapCursor(idx);
 
@@ -1056,7 +1071,7 @@
     const wot         = CH.tps.filter(v=>v>80).length/n*100;
     const freq        = n/dur;
     const glatMax     = MAX(CH.glat.map(Math.abs));
-    const gfrMax      = MAX(CH.gfr.map(Math.abs));
+    const gfrMax      = MAX(CH.gfr.map(Math.abs));  // gyro_y pitch rad/s
     const pAntV       = CH.pant.filter(v=>v!=null);
     const pPostV      = CH.ppost.filter(v=>v!=null);
     const tAntV       = CH.tant.filter(v=>v!=null&&v>0);
@@ -1116,28 +1131,28 @@
 
   // ── DEMO ───────────────────────────────────────────────────────
   const DEMO=[
-  {"timestamp":"2026-04-26 12:00:00.000","tpms_ant":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"tpms_post":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":0,"iat_c":0,"ignition_advance_deg":0,"fuel_l100":0,"fuel_trim_pct":0,"coolant_temp_c":0,"map_kpa":0,"battery_voltage":0,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":0,"connected":false},"sensors":{"g_lateral":0,"g_front":0}},
-  {"timestamp":"2026-04-26 12:00:00.500","tpms_ant":{"pressure_bar":2.20,"temp_c":22.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":2,"iat_c":24.5,"ignition_advance_deg":5,"fuel_l100":2.0,"fuel_trim_pct":0,"coolant_temp_c":65.0,"map_kpa":32,"battery_voltage":12.8,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":1000,"connected":true},"sensors":{"g_lateral":0,"g_front":0}},
-  {"timestamp":"2026-04-26 12:00:01.100","tpms_ant":{"pressure_bar":2.21,"temp_c":22.3,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.48,"temp_c":24.0,"battery_pct":100,"alarm":false},"obd":{"tps_pct":65,"accel_pedal_pct":80,"engine_load_pct":55,"iat_c":24.8,"ignition_advance_deg":18,"fuel_l100":8.0,"fuel_trim_pct":-2.5,"coolant_temp_c":66.0,"map_kpa":75,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":18,"rpm":3800,"connected":true},"sensors":{"g_lateral":-0.05,"g_front":-0.28}},
-  {"timestamp":"2026-04-26 12:00:01.800","tpms_ant":{"pressure_bar":2.22,"temp_c":22.6,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.49,"temp_c":24.3,"battery_pct":100,"alarm":false},"obd":{"tps_pct":88,"accel_pedal_pct":95,"engine_load_pct":78,"iat_c":25.2,"ignition_advance_deg":24,"fuel_l100":12.0,"fuel_trim_pct":-1.5,"coolant_temp_c":68.0,"map_kpa":92,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":45,"rpm":6200,"connected":true},"sensors":{"g_lateral":-0.04,"g_front":-0.35}},
-  {"timestamp":"2026-04-26 12:00:02.600","tpms_ant":{"pressure_bar":2.23,"temp_c":23.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.50,"temp_c":24.6,"battery_pct":100,"alarm":false},"obd":{"tps_pct":92,"accel_pedal_pct":98,"engine_load_pct":88,"iat_c":25.5,"ignition_advance_deg":28,"fuel_l100":14.5,"fuel_trim_pct":0,"coolant_temp_c":71.0,"map_kpa":98,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":78,"rpm":7800,"connected":true},"sensors":{"g_lateral":-0.03,"g_front":-0.32}},
-  {"timestamp":"2026-04-26 12:00:03.500","tpms_ant":{"pressure_bar":2.24,"temp_c":23.5,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":0,"iat_c":0,"ignition_advance_deg":0,"fuel_l100":0,"fuel_trim_pct":0,"coolant_temp_c":0,"map_kpa":0,"battery_voltage":0,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":0,"connected":false},"sensors":{"g_lateral":-0.01,"g_front":-0.22}},
-  {"timestamp":"2026-04-26 12:00:04.500","tpms_ant":{"pressure_bar":2.25,"temp_c":24.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.52,"temp_c":25.5,"battery_pct":100,"alarm":false},"obd":{"tps_pct":95,"accel_pedal_pct":100,"engine_load_pct":97,"iat_c":27.0,"ignition_advance_deg":32,"fuel_l100":17.0,"fuel_trim_pct":2.0,"coolant_temp_c":86.0,"map_kpa":103,"battery_voltage":13.9,"dtc_count":0,"mil_on":false,"speed_kmh":172,"rpm":9350,"connected":true},"sensors":{"g_lateral":0,"g_front":-0.18}},
-  {"timestamp":"2026-04-26 12:00:05.200","tpms_ant":{"pressure_bar":2.26,"temp_c":24.5,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.53,"temp_c":26.0,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":5,"iat_c":27.0,"ignition_advance_deg":8,"fuel_l100":3.0,"fuel_trim_pct":0,"coolant_temp_c":88.0,"map_kpa":38,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":155,"rpm":5800,"connected":true},"sensors":{"g_lateral":0,"g_front":0.55}},
-  {"timestamp":"2026-04-26 12:00:05.800","tpms_ant":{"pressure_bar":2.26,"temp_c":24.8,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.54,"temp_c":26.8,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":4,"iat_c":27.0,"ignition_advance_deg":6,"fuel_l100":2.5,"fuel_trim_pct":-1,"coolant_temp_c":89.0,"map_kpa":33,"battery_voltage":13.4,"dtc_count":0,"mil_on":false,"speed_kmh":115,"rpm":4200,"connected":true},"sensors":{"g_lateral":0,"g_front":0.68}},
-  {"timestamp":"2026-04-26 12:00:06.300","tpms_ant":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.1,"battery_pct":100,"alarm":false},"obd":{"tps_pct":18,"accel_pedal_pct":20,"engine_load_pct":18,"iat_c":27.0,"ignition_advance_deg":15,"fuel_l100":5.0,"fuel_trim_pct":0,"coolant_temp_c":89.8,"map_kpa":58,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":52,"rpm":2500,"connected":true},"sensors":{"g_lateral":0.38,"g_front":0.08}},
-  {"timestamp":"2026-04-26 12:00:07.400","tpms_ant":{"pressure_bar":2.27,"temp_c":25.5,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.5,"battery_pct":100,"alarm":false},"obd":{"tps_pct":30,"accel_pedal_pct":35,"engine_load_pct":30,"iat_c":27.0,"ignition_advance_deg":20,"fuel_l100":5.5,"fuel_trim_pct":0.5,"coolant_temp_c":90.0,"map_kpa":68,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":55,"rpm":3000,"connected":true},"sensors":{"g_lateral":0.55,"g_front":-0.05}},
-  {"timestamp":"2026-04-26 12:00:08.000","tpms_ant":{"pressure_bar":2.27,"temp_c":25.6,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.6,"battery_pct":100,"alarm":false},"obd":{"tps_pct":38,"accel_pedal_pct":45,"engine_load_pct":40,"iat_c":27.0,"ignition_advance_deg":22,"fuel_l100":6.0,"fuel_trim_pct":0.8,"coolant_temp_c":90.2,"map_kpa":74,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":58,"rpm":3400,"connected":true},"sensors":{"g_lateral":0.60,"g_front":-0.08}},
-  {"timestamp":"2026-04-26 12:00:08.600","tpms_ant":{"pressure_bar":2.27,"temp_c":25.7,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.7,"battery_pct":100,"alarm":false},"obd":{"tps_pct":58,"accel_pedal_pct":70,"engine_load_pct":60,"iat_c":27.0,"ignition_advance_deg":26,"fuel_l100":8.5,"fuel_trim_pct":1.5,"coolant_temp_c":90.5,"map_kpa":88,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":72,"rpm":4800,"connected":true},"sensors":{"g_lateral":0.30,"g_front":-0.15}},
-  {"timestamp":"2026-04-26 12:00:09.300","tpms_ant":{"pressure_bar":2.27,"temp_c":25.8,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.8,"battery_pct":100,"alarm":false},"obd":{"tps_pct":72,"accel_pedal_pct":88,"engine_load_pct":80,"iat_c":27.0,"ignition_advance_deg":29,"fuel_l100":11.0,"fuel_trim_pct":2.0,"coolant_temp_c":91.0,"map_kpa":96,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":95,"rpm":6500,"connected":true},"sensors":{"g_lateral":0.05,"g_front":-0.22}},
-  {"timestamp":"2026-04-26 12:00:10.100","tpms_ant":{"pressure_bar":2.27,"temp_c":25.9,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.9,"battery_pct":100,"alarm":false},"obd":{"tps_pct":10,"accel_pedal_pct":15,"engine_load_pct":12,"iat_c":27.0,"ignition_advance_deg":10,"fuel_l100":4.0,"fuel_trim_pct":0,"coolant_temp_c":91.2,"map_kpa":45,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":88,"rpm":4200,"connected":true},"sensors":{"g_lateral":-0.42,"g_front":0.10}},
-  {"timestamp":"2026-04-26 12:00:10.700","tpms_ant":{"pressure_bar":2.27,"temp_c":26.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.0,"battery_pct":100,"alarm":false},"obd":{"tps_pct":25,"accel_pedal_pct":30,"engine_load_pct":28,"iat_c":27.0,"ignition_advance_deg":17,"fuel_l100":5.5,"fuel_trim_pct":-0.5,"coolant_temp_c":91.5,"map_kpa":65,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":82,"rpm":4000,"connected":true},"sensors":{"g_lateral":-0.58,"g_front":-0.05}},
-  {"timestamp":"2026-04-26 12:00:11.300","tpms_ant":{"pressure_bar":2.27,"temp_c":26.1,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.1,"battery_pct":100,"alarm":false},"obd":{"tps_pct":32,"accel_pedal_pct":40,"engine_load_pct":36,"iat_c":27.0,"ignition_advance_deg":21,"fuel_l100":6.0,"fuel_trim_pct":-1.0,"coolant_temp_c":91.8,"map_kpa":70,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":78,"rpm":3800,"connected":true},"sensors":{"g_lateral":-0.60,"g_front":-0.08}},
-  {"timestamp":"2026-04-26 12:00:12.000","tpms_ant":{"pressure_bar":2.27,"temp_c":26.2,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.2,"battery_pct":100,"alarm":false},"obd":{"tps_pct":60,"accel_pedal_pct":75,"engine_load_pct":68,"iat_c":27.0,"ignition_advance_deg":27,"fuel_l100":9.5,"fuel_trim_pct":1.0,"coolant_temp_c":92.0,"map_kpa":90,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":92,"rpm":5800,"connected":true},"sensors":{"g_lateral":-0.28,"g_front":-0.18}},
-  {"timestamp":"2026-04-26 12:00:12.800","tpms_ant":{"pressure_bar":2.27,"temp_c":26.3,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.3,"battery_pct":100,"alarm":false},"obd":{"tps_pct":78,"accel_pedal_pct":92,"engine_load_pct":88,"iat_c":27.0,"ignition_advance_deg":31,"fuel_l100":13.0,"fuel_trim_pct":2.5,"coolant_temp_c":92.5,"map_kpa":99,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":118,"rpm":8200,"connected":true},"sensors":{"g_lateral":-0.05,"g_front":-0.25}},
-  {"timestamp":"2026-04-26 12:00:13.600","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":3,"iat_c":27.0,"ignition_advance_deg":5,"fuel_l100":1.8,"fuel_trim_pct":0,"coolant_temp_c":92.8,"map_kpa":31,"battery_voltage":13.4,"dtc_count":0,"mil_on":false,"speed_kmh":95,"rpm":3200,"connected":true},"sensors":{"g_lateral":0,"g_front":0.48}},
-  {"timestamp":"2026-04-26 12:00:14.200","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":2,"iat_c":27.0,"ignition_advance_deg":3,"fuel_l100":1.5,"fuel_trim_pct":-0.5,"coolant_temp_c":93.0,"map_kpa":28,"battery_voltage":13.3,"dtc_count":0,"mil_on":false,"speed_kmh":45,"rpm":1800,"connected":true},"sensors":{"g_lateral":0,"g_front":0.35}},
-  {"timestamp":"2026-04-26 12:00:14.800","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"battery_pct":100,"alarm":false},"obd":{"tps_pct":2,"accel_pedal_pct":2,"engine_load_pct":2,"iat_c":27.0,"ignition_advance_deg":2,"fuel_l100":2.2,"fuel_trim_pct":0,"coolant_temp_c":93.0,"map_kpa":30,"battery_voltage":12.8,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":1050,"connected":true},"sensors":{"g_lateral":0,"g_front":0}}
+  {"timestamp":"2026-04-26 12:00:00.000","tpms_ant":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"tpms_post":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":0,"iat_c":0,"ignition_advance_deg":0,"fuel_l100":0,"fuel_trim_pct":0,"coolant_temp_c":0,"map_kpa":0,"baro_kpa":0,"battery_voltage":0,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":0,"connected":false},"sensors":{"g_lateral":0,"gyro_x":0,"gyro_y":0,"gyro_z":0,"latitude":0,"longitude":0,"altitude_m":0,"bearing_deg":0,"gps_speed_kmh":0,"gps_accuracy_m":0,"gps_available":false}},
+  {"timestamp":"2026-04-26 12:00:00.500","tpms_ant":{"pressure_bar":2.20,"temp_c":22.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":2,"iat_c":24.5,"ignition_advance_deg":5,"fuel_l100":2.0,"fuel_trim_pct":0,"coolant_temp_c":65.0,"map_kpa":32,"baro_kpa":101.2,"battery_voltage":12.8,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":1000,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0.01,"gyro_y":0.02,"gyro_z":0,"latitude":28.1230,"longitude":-15.4560,"altitude_m":142.0,"bearing_deg":0,"gps_speed_kmh":0,"gps_accuracy_m":8.0,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:01.100","tpms_ant":{"pressure_bar":2.21,"temp_c":22.3,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.48,"temp_c":24.0,"battery_pct":100,"alarm":false},"obd":{"tps_pct":65,"accel_pedal_pct":80,"engine_load_pct":55,"iat_c":24.8,"ignition_advance_deg":18,"fuel_l100":8.0,"fuel_trim_pct":-2.5,"coolant_temp_c":66.0,"map_kpa":75,"baro_kpa":101.2,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":18,"rpm":3800,"connected":true},"sensors":{"g_lateral":-0.05,"gyro_x":-0.08,"gyro_y":-0.28,"gyro_z":0.04,"latitude":28.1231,"longitude":-15.4558,"altitude_m":143.0,"bearing_deg":85.2,"gps_speed_kmh":18.1,"gps_accuracy_m":5.0,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:01.800","tpms_ant":{"pressure_bar":2.22,"temp_c":22.6,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.49,"temp_c":24.3,"battery_pct":100,"alarm":false},"obd":{"tps_pct":88,"accel_pedal_pct":95,"engine_load_pct":78,"iat_c":25.2,"ignition_advance_deg":24,"fuel_l100":12.0,"fuel_trim_pct":-1.5,"coolant_temp_c":68.0,"map_kpa":92,"baro_kpa":101.2,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":45,"rpm":6200,"connected":true},"sensors":{"g_lateral":-0.04,"gyro_x":-0.06,"gyro_y":-0.35,"gyro_z":0.02,"latitude":28.1234,"longitude":-15.4552,"altitude_m":144.5,"bearing_deg":87.0,"gps_speed_kmh":44.8,"gps_accuracy_m":4.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:02.600","tpms_ant":{"pressure_bar":2.23,"temp_c":23.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.50,"temp_c":24.6,"battery_pct":100,"alarm":false},"obd":{"tps_pct":92,"accel_pedal_pct":98,"engine_load_pct":88,"iat_c":25.5,"ignition_advance_deg":28,"fuel_l100":14.5,"fuel_trim_pct":0,"coolant_temp_c":71.0,"map_kpa":98,"baro_kpa":101.1,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":78,"rpm":7800,"connected":true},"sensors":{"g_lateral":-0.03,"gyro_x":-0.05,"gyro_y":-0.32,"gyro_z":0.01,"latitude":28.1240,"longitude":-15.4540,"altitude_m":146.0,"bearing_deg":88.5,"gps_speed_kmh":78.2,"gps_accuracy_m":4.0,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:03.500","tpms_ant":{"pressure_bar":2.24,"temp_c":23.5,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":0,"iat_c":0,"ignition_advance_deg":0,"fuel_l100":0,"fuel_trim_pct":0,"coolant_temp_c":0,"map_kpa":0,"baro_kpa":0,"battery_voltage":0,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":0,"connected":false},"sensors":{"g_lateral":-0.01,"gyro_x":-0.02,"gyro_y":-0.22,"gyro_z":0.01,"latitude":28.1248,"longitude":-15.4525,"altitude_m":147.0,"bearing_deg":89.0,"gps_speed_kmh":0,"gps_accuracy_m":4.0,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:04.500","tpms_ant":{"pressure_bar":2.25,"temp_c":24.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.52,"temp_c":25.5,"battery_pct":100,"alarm":false},"obd":{"tps_pct":95,"accel_pedal_pct":100,"engine_load_pct":97,"iat_c":27.0,"ignition_advance_deg":32,"fuel_l100":17.0,"fuel_trim_pct":2.0,"coolant_temp_c":86.0,"map_kpa":103,"baro_kpa":101.0,"battery_voltage":13.9,"dtc_count":0,"mil_on":false,"speed_kmh":172,"rpm":9350,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0.01,"gyro_y":-0.18,"gyro_z":0.03,"latitude":28.1260,"longitude":-15.4505,"altitude_m":148.5,"bearing_deg":90.0,"gps_speed_kmh":171.8,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:05.200","tpms_ant":{"pressure_bar":2.26,"temp_c":24.5,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.53,"temp_c":26.0,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":5,"iat_c":27.0,"ignition_advance_deg":8,"fuel_l100":3.0,"fuel_trim_pct":0,"coolant_temp_c":88.0,"map_kpa":38,"baro_kpa":101.0,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":155,"rpm":5800,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0.02,"gyro_y":0.55,"gyro_z":-0.02,"latitude":28.1275,"longitude":-15.4482,"altitude_m":149.0,"bearing_deg":91.2,"gps_speed_kmh":154.5,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:05.800","tpms_ant":{"pressure_bar":2.26,"temp_c":24.8,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.54,"temp_c":26.8,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":4,"iat_c":27.0,"ignition_advance_deg":6,"fuel_l100":2.5,"fuel_trim_pct":-1,"coolant_temp_c":89.0,"map_kpa":33,"baro_kpa":101.0,"battery_voltage":13.4,"dtc_count":0,"mil_on":false,"speed_kmh":115,"rpm":4200,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0.01,"gyro_y":0.68,"gyro_z":-0.01,"latitude":28.1285,"longitude":-15.4462,"altitude_m":149.5,"bearing_deg":92.0,"gps_speed_kmh":114.8,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:06.300","tpms_ant":{"pressure_bar":0,"temp_c":0,"battery_pct":0,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.1,"battery_pct":100,"alarm":false},"obd":{"tps_pct":18,"accel_pedal_pct":20,"engine_load_pct":18,"iat_c":27.0,"ignition_advance_deg":15,"fuel_l100":5.0,"fuel_trim_pct":0,"coolant_temp_c":89.8,"map_kpa":58,"baro_kpa":101.0,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":52,"rpm":2500,"connected":true},"sensors":{"g_lateral":0.38,"gyro_x":0.45,"gyro_y":0.08,"gyro_z":0.12,"latitude":28.1292,"longitude":-15.4448,"altitude_m":150.0,"bearing_deg":95.5,"gps_speed_kmh":51.8,"gps_accuracy_m":4.0,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:07.400","tpms_ant":{"pressure_bar":2.27,"temp_c":25.5,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.5,"battery_pct":100,"alarm":false},"obd":{"tps_pct":30,"accel_pedal_pct":35,"engine_load_pct":30,"iat_c":27.0,"ignition_advance_deg":20,"fuel_l100":5.5,"fuel_trim_pct":0.5,"coolant_temp_c":90.0,"map_kpa":68,"baro_kpa":101.0,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":55,"rpm":3000,"connected":true},"sensors":{"g_lateral":0.55,"gyro_x":0.62,"gyro_y":-0.05,"gyro_z":0.18,"latitude":28.1298,"longitude":-15.4432,"altitude_m":150.5,"bearing_deg":98.0,"gps_speed_kmh":54.9,"gps_accuracy_m":3.8,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:08.000","tpms_ant":{"pressure_bar":2.27,"temp_c":25.6,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.6,"battery_pct":100,"alarm":false},"obd":{"tps_pct":38,"accel_pedal_pct":45,"engine_load_pct":40,"iat_c":27.0,"ignition_advance_deg":22,"fuel_l100":6.0,"fuel_trim_pct":0.8,"coolant_temp_c":90.2,"map_kpa":74,"baro_kpa":101.0,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":58,"rpm":3400,"connected":true},"sensors":{"g_lateral":0.60,"gyro_x":0.68,"gyro_y":-0.08,"gyro_z":0.20,"latitude":28.1305,"longitude":-15.4415,"altitude_m":151.0,"bearing_deg":100.2,"gps_speed_kmh":57.8,"gps_accuracy_m":3.8,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:08.600","tpms_ant":{"pressure_bar":2.27,"temp_c":25.7,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.7,"battery_pct":100,"alarm":false},"obd":{"tps_pct":58,"accel_pedal_pct":70,"engine_load_pct":60,"iat_c":27.0,"ignition_advance_deg":26,"fuel_l100":8.5,"fuel_trim_pct":1.5,"coolant_temp_c":90.5,"map_kpa":88,"baro_kpa":101.0,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":72,"rpm":4800,"connected":true},"sensors":{"g_lateral":0.30,"gyro_x":0.35,"gyro_y":-0.15,"gyro_z":0.08,"latitude":28.1314,"longitude":-15.4395,"altitude_m":151.5,"bearing_deg":102.0,"gps_speed_kmh":71.5,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:09.300","tpms_ant":{"pressure_bar":2.27,"temp_c":25.8,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.8,"battery_pct":100,"alarm":false},"obd":{"tps_pct":72,"accel_pedal_pct":88,"engine_load_pct":80,"iat_c":27.0,"ignition_advance_deg":29,"fuel_l100":11.0,"fuel_trim_pct":2.0,"coolant_temp_c":91.0,"map_kpa":96,"baro_kpa":100.9,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":95,"rpm":6500,"connected":true},"sensors":{"g_lateral":0.05,"gyro_x":0.08,"gyro_y":-0.22,"gyro_z":0.03,"latitude":28.1325,"longitude":-15.4372,"altitude_m":152.0,"bearing_deg":103.5,"gps_speed_kmh":94.8,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:10.100","tpms_ant":{"pressure_bar":2.27,"temp_c":25.9,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":27.9,"battery_pct":100,"alarm":false},"obd":{"tps_pct":10,"accel_pedal_pct":15,"engine_load_pct":12,"iat_c":27.0,"ignition_advance_deg":10,"fuel_l100":4.0,"fuel_trim_pct":0,"coolant_temp_c":91.2,"map_kpa":45,"baro_kpa":100.9,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":88,"rpm":4200,"connected":true},"sensors":{"g_lateral":-0.42,"gyro_x":-0.48,"gyro_y":0.10,"gyro_z":-0.15,"latitude":28.1334,"longitude":-15.4352,"altitude_m":152.5,"bearing_deg":105.0,"gps_speed_kmh":87.5,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:10.700","tpms_ant":{"pressure_bar":2.27,"temp_c":26.0,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.0,"battery_pct":100,"alarm":false},"obd":{"tps_pct":25,"accel_pedal_pct":30,"engine_load_pct":28,"iat_c":27.0,"ignition_advance_deg":17,"fuel_l100":5.5,"fuel_trim_pct":-0.5,"coolant_temp_c":91.5,"map_kpa":65,"baro_kpa":100.9,"battery_voltage":13.5,"dtc_count":0,"mil_on":false,"speed_kmh":82,"rpm":4000,"connected":true},"sensors":{"g_lateral":-0.58,"gyro_x":-0.65,"gyro_y":-0.05,"gyro_z":-0.20,"latitude":28.1342,"longitude":-15.4332,"altitude_m":153.0,"bearing_deg":106.2,"gps_speed_kmh":81.8,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:11.300","tpms_ant":{"pressure_bar":2.27,"temp_c":26.1,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.1,"battery_pct":100,"alarm":false},"obd":{"tps_pct":32,"accel_pedal_pct":40,"engine_load_pct":36,"iat_c":27.0,"ignition_advance_deg":21,"fuel_l100":6.0,"fuel_trim_pct":-1.0,"coolant_temp_c":91.8,"map_kpa":70,"baro_kpa":100.9,"battery_voltage":13.6,"dtc_count":0,"mil_on":false,"speed_kmh":78,"rpm":3800,"connected":true},"sensors":{"g_lateral":-0.60,"gyro_x":-0.68,"gyro_y":-0.08,"gyro_z":-0.22,"latitude":28.1350,"longitude":-15.4310,"altitude_m":153.5,"bearing_deg":107.5,"gps_speed_kmh":77.5,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:12.000","tpms_ant":{"pressure_bar":2.27,"temp_c":26.2,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.2,"battery_pct":100,"alarm":false},"obd":{"tps_pct":60,"accel_pedal_pct":75,"engine_load_pct":68,"iat_c":27.0,"ignition_advance_deg":27,"fuel_l100":9.5,"fuel_trim_pct":1.0,"coolant_temp_c":92.0,"map_kpa":90,"baro_kpa":100.8,"battery_voltage":13.7,"dtc_count":0,"mil_on":false,"speed_kmh":92,"rpm":5800,"connected":true},"sensors":{"g_lateral":-0.28,"gyro_x":-0.32,"gyro_y":-0.18,"gyro_z":-0.10,"latitude":28.1360,"longitude":-15.4285,"altitude_m":154.0,"bearing_deg":108.8,"gps_speed_kmh":91.5,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:12.800","tpms_ant":{"pressure_bar":2.27,"temp_c":26.3,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.3,"battery_pct":100,"alarm":false},"obd":{"tps_pct":78,"accel_pedal_pct":92,"engine_load_pct":88,"iat_c":27.0,"ignition_advance_deg":31,"fuel_l100":13.0,"fuel_trim_pct":2.5,"coolant_temp_c":92.5,"map_kpa":99,"baro_kpa":100.8,"battery_voltage":13.8,"dtc_count":0,"mil_on":false,"speed_kmh":118,"rpm":8200,"connected":true},"sensors":{"g_lateral":-0.05,"gyro_x":-0.06,"gyro_y":-0.25,"gyro_z":-0.02,"latitude":28.1372,"longitude":-15.4258,"altitude_m":154.5,"bearing_deg":110.0,"gps_speed_kmh":117.8,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:13.600","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":3,"iat_c":27.0,"ignition_advance_deg":5,"fuel_l100":1.8,"fuel_trim_pct":0,"coolant_temp_c":92.8,"map_kpa":31,"baro_kpa":100.8,"battery_voltage":13.4,"dtc_count":0,"mil_on":false,"speed_kmh":95,"rpm":3200,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0.01,"gyro_y":0.48,"gyro_z":0.01,"latitude":28.1382,"longitude":-15.4232,"altitude_m":155.0,"bearing_deg":111.2,"gps_speed_kmh":94.5,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:14.200","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"battery_pct":100,"alarm":false},"obd":{"tps_pct":0,"accel_pedal_pct":0,"engine_load_pct":2,"iat_c":27.0,"ignition_advance_deg":3,"fuel_l100":1.5,"fuel_trim_pct":-0.5,"coolant_temp_c":93.0,"map_kpa":28,"baro_kpa":100.8,"battery_voltage":13.3,"dtc_count":0,"mil_on":false,"speed_kmh":45,"rpm":1800,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0.01,"gyro_y":0.35,"gyro_z":0.01,"latitude":28.1390,"longitude":-15.4210,"altitude_m":155.0,"bearing_deg":112.0,"gps_speed_kmh":44.8,"gps_accuracy_m":3.5,"gps_available":true}},
+  {"timestamp":"2026-04-26 12:00:14.800","tpms_ant":{"pressure_bar":2.27,"temp_c":26.4,"battery_pct":100,"alarm":false},"tpms_post":{"pressure_bar":2.55,"temp_c":28.4,"battery_pct":100,"alarm":false},"obd":{"tps_pct":2,"accel_pedal_pct":2,"engine_load_pct":2,"iat_c":27.0,"ignition_advance_deg":2,"fuel_l100":2.2,"fuel_trim_pct":0,"coolant_temp_c":93.0,"map_kpa":30,"baro_kpa":100.8,"battery_voltage":12.8,"dtc_count":0,"mil_on":false,"speed_kmh":0,"rpm":1050,"connected":true},"sensors":{"g_lateral":0,"gyro_x":0,"gyro_y":0,"gyro_z":0,"latitude":28.1395,"longitude":-15.4198,"altitude_m":155.0,"bearing_deg":0,"gps_speed_kmh":0,"gps_accuracy_m":4.0,"gps_available":true}}
   ];
 </script>
 </body>
