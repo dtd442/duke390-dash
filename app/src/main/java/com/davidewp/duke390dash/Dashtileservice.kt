@@ -8,7 +8,6 @@ import android.service.quicksettings.TileService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -52,23 +51,14 @@ class DashTileService : TileService() {
         // nessun broadcast, nessuna dipendenza da MainActivity.
         // dashState.value.obd.connected indica se il service è attivo e ha dati.
         stateJob = tileScope.launch {
-            combine(
-                DashForegroundService.dashState,
-                DashForegroundService.gpsState  // usato solo per trigger — non ci serve il valore
-            ) { dash, _ ->
-                // Il service è "running" se ha mai ricevuto dati OBD o TPMS
-                val running = dash.obd.connected ||
-                        dash.tpmsAnt.pressureBar  > 0f ||
-                        dash.tpmsPost.pressureBar > 0f ||
-                        DashForegroundService.isLoggingState
-                running
-            }.collect { running ->
-                isRunning = running
+            DashForegroundService.dashState.collect {
+                isRunning = DashForegroundService.isAlive
                 isLogging = DashForegroundService.isLoggingState
                 renderTile()
             }
         }
         // Render immediato con lo stato attuale senza aspettare il flow
+        isRunning = DashForegroundService.isAlive
         isLogging = DashForegroundService.isLoggingState
         renderTile()
     }
@@ -90,21 +80,16 @@ class DashTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        if (!isRunning) {
-            // App non attiva — aprila
-            startActivityAndCollapse(
-                Intent(this, SplashActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-            )
-            return
-        }
-        // Manda il toggle direttamente al service — bypassa MainActivity
-        val intent = Intent(this, DashForegroundService::class.java).apply {
+        // Avvia il service se non è ancora vivo (app chiusa o mai aperta)
+        // Il service si avvia in foreground, inizializza tutti i manager
+        // e può loggare autonomamente senza MainActivity.
+        val toggleIntent = Intent(this, DashForegroundService::class.java).apply {
             action = DashForegroundService.ACTION_TOGGLE_LOG
         }
-        startService(intent)
-        // Aggiorna il tile ottimisticamente — il flow lo aggiornerà comunque
+        startService(toggleIntent)
+
+        // Aggiorna il tile ottimisticamente
+        isRunning = true
         isLogging = !isLogging
         renderTile()
     }

@@ -370,8 +370,12 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         if (serviceBound) { unbindService(serviceConnection); serviceBound = false }
         AppLog.close()
-        DashTileService.updateTile(this, running = false, logging = false)
-        DashForegroundService.stop(this)
+        DashTileService.updateTile(this, running = true, logging = dashService?.isLogging() == true)
+        // Non stoppiamo il service se sta loggando — continua in background
+        if (dashService?.isLogging() != true) {
+            DashTileService.updateTile(this, running = false, logging = false)
+            DashForegroundService.stop(this)
+        }
     }
 
     private fun notifyTile() {

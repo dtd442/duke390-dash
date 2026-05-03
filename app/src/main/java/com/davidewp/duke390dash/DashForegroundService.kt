@@ -47,6 +47,10 @@ class DashForegroundService : Service() {
             get() = _isLoggingState
         private var _isLoggingState = false
 
+        // true dal momento in cui il service è vivo — settato in onCreate, cleared in onDestroy
+        var isAlive: Boolean = false
+            private set
+
         fun start(context: Context) {
             context.startForegroundService(Intent(context, DashForegroundService::class.java))
         }
@@ -77,6 +81,7 @@ class DashForegroundService : Service() {
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
         acquireWakeLock()
+        isAlive = true
         AppLog.init(this)   // apre il file di log prima che i manager inizino a scrivere
 
         // ── Legge prefs e inizializza i manager ───────────────────────────────
@@ -127,16 +132,14 @@ class DashForegroundService : Service() {
         }
 
         // ── Loop di log 2 Hz — indipendente da OBD/TPMS ──────────────────────
+        // Scrive dal primo frame utile non appena isLogging è true,
+        // indipendentemente da quali sensori siano già connessi.
         serviceScope.launch {
             while (isActive) {
                 delay(LOG_INTERVAL_MS)
-                val state = _dashState.value
-                val hasData = state.obd.connected ||
-                        state.tpmsAnt.pressureBar  > 0f ||
-                        state.tpmsPost.pressureBar > 0f
-                if (sessionLogger.isLogging && hasData) {
+                if (sessionLogger.isLogging) {
                     sessionLogger.log(
-                        state    = state,
+                        state    = _dashState.value,
                         gLateral = lastGLateral,
                         gyroX    = lastGyroX,
                         gyroY    = lastGyroY,
@@ -179,23 +182,44 @@ class DashForegroundService : Service() {
     // ── Binder ────────────────────────────────────────────────────────────────
 
     private val binder = LocalBinder()
+    private var boundClients = 0
 
     inner class LocalBinder : android.os.Binder() {
         fun getService(): DashForegroundService = this@DashForegroundService
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder {
+        boundClients++
+        return binder
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        boundClients--
+        return super.onUnbind(intent)
+    }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_TOGGLE_LOG) {
-            if (sessionLogger.isLogging) sessionLogger.stopSession()
-            else sessionLogger.startSession()
-            _isLoggingState = sessionLogger.isLogging
-            DashTileService.updateTile(this, running = true, logging = _isLoggingState)
+            if (sessionLogger.isLogging) {
+                sessionLogger.stopSession()
+                _isLoggingState = false
+                DashTileService.updateTile(this, running = true, logging = false)
+                // Killa il service solo se nessuna Activity è bindata (app chiusa)
+                if (boundClients == 0) {
+                    DashTileService.updateTile(this, running = false, logging = false)
+                    AppLog.close()
+                    stopSelf()
+                }
+            } else {
+                sessionLogger.startSession()
+                _isLoggingState = sessionLogger.isLogging
+                DashTileService.updateTile(this, running = true, logging = _isLoggingState)
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
+        isAlive = false
         serviceScope.cancel()
         gSensor.stop()
         gpsManager.stop()
