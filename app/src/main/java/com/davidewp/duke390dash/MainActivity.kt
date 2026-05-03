@@ -4,10 +4,12 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
+import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -54,8 +56,8 @@ class MainActivity : AppCompatActivity() {
     // Richiede almeno 3 dita tenute premute per LONG_PRESS_MS ms.
     // Un tocco accidentale con 1-2 dita (tasca, vibrazioni) non fa nulla.
     private companion object {
-        const val LONG_PRESS_MS = 800L  // ms di attesa
-        const val MIN_FINGERS   = 3     // dita minime
+        const val LONG_PRESS_MS = 800L
+        const val MIN_FINGERS   = 3
     }
 
     private val longPressHandler   = Handler(Looper.getMainLooper())
@@ -71,25 +73,31 @@ class MainActivity : AppCompatActivity() {
     // ── Permessi ──────────────────────────────────────────────────────────────
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val bleOk = permissions[android.Manifest.permission.BLUETOOTH_SCAN] == true &&
-                permissions[android.Manifest.permission.BLUETOOTH_CONNECT] == true
-        val gpsOk = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
-        if (bleOk && gpsOk) {
-            // Manager già avviati nel service — nessuna init aggiuntiva necessaria
-        }
+    ) { _ ->
+        // Manager già avviati nel service — nessuna init aggiuntiva necessaria
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // ── Schermo sempre acceso, no lock, no standby ────────────────────────
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-        )
+        // FLAG_KEEP_SCREEN_ON non è deprecato — gli altri sì, sostituiti con API moderne
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // API moderne per show-when-locked e turn-screen-on (deprecano i vecchi FLAG_*)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            km.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
 
         DashForegroundService.start(this)
         bindService(
@@ -98,11 +106,10 @@ class MainActivity : AppCompatActivity() {
             Context.BIND_AUTO_CREATE
         )
 
-        // ── Fullscreen totale — gesture di sistema disabilitate ───────────────
-        // BEHAVIOR_SHOW_BARS_BY_TOUCH: le barre di sistema NON compaiono con
-        // uno swipe dal bordo (vibrazioni, tasca) — richiedono un tocco esplicito.
-        // Questo blocca efficacemente la tendina delle notifiche e la nav bar
-        // durante la guida.
+        // ── Fullscreen — le barre escono solo con swipe doppio (come prima) ───
+        // BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE: il primo swipe mostra le barre
+        // in modalità transitoria, il secondo le "sblocca" — comportamento identico
+        // a quello originale dell'app.
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -112,7 +119,7 @@ class MainActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             hide(WindowInsetsCompat.Type.navigationBars())
             hide(WindowInsetsCompat.Type.statusBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -129,9 +136,9 @@ class MainActivity : AppCompatActivity() {
         ))
 
         // ── Long press a 3 dita ───────────────────────────────────────────────
-        // Intercetta i tocchi sulla root view. Se almeno MIN_FINGERS dita
-        // restano premute per LONG_PRESS_MS ms consecutivi → apre i settings.
-        // Al primo dito alzato il timer viene cancellato.
+        // return true: consuma l'evento così il sistema non lo intercetta prima
+        // e tutti i MotionEvent multitouch arrivano correttamente al listener.
+        @SuppressLint("ClickableViewAccessibility")
         binding.root.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN,
@@ -148,7 +155,7 @@ class MainActivity : AppCompatActivity() {
                     longPressHandler.removeCallbacks(longPressRunnable)
                 }
             }
-            false  // non consuma l'evento — la UI risponde normalmente
+            true  // consuma l'evento — necessario per ricevere tutti gli eventi multitouch
         }
 
         // ── Collect dashState ─────────────────────────────────────────────────
@@ -171,7 +178,6 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         notifyTile()
-        // Ripristina fullscreen dopo dialog o notifiche che riportano le barre
         hideSystemBars()
     }
 
@@ -186,7 +192,7 @@ class MainActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             hide(WindowInsetsCompat.Type.navigationBars())
             hide(WindowInsetsCompat.Type.statusBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
