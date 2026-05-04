@@ -237,11 +237,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateCalibDot(state: DashForegroundService.CalibState) {
         val color = when (state) {
-            DashForegroundService.CalibState.IDLE          -> 0xFF333333.toInt() // grigio
-            DashForegroundService.CalibState.WAITING_STILL,
-            DashForegroundService.CalibState.WAITING_MOVE,
-            DashForegroundService.CalibState.CALIBRATING   -> 0xFFEF9F27.toInt() // arancio
-            DashForegroundService.CalibState.DONE          -> 0xFF00CC44.toInt() // verde
+            DashForegroundService.CalibState.IDLE          -> 0xFF333333.toInt() // grigio — nessuna sessione
+            DashForegroundService.CalibState.STATIC_WAIT   -> 0xFFEF9F27.toInt() // arancio — fase 1 in corso
+            DashForegroundService.CalibState.STATIC_DONE   -> 0xFF00CC44.toInt() // verde — fase 1 ok
+            DashForegroundService.CalibState.MOTION_CALIB  -> 0xFF4DA6FF.toInt() // azzurro — fase 2 in corso
         }
         binding.dotCalib.setTextColor(color)
     }
@@ -545,17 +544,15 @@ class MainActivity : AppCompatActivity() {
         editIdPost.setText(savedIdPost)
         switchMoto.isChecked = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
 
-        val svcForOffset = dashService
-        txtOffset.text = "offset: ${"%.2f".format(svcForOffset?.getGSensorOffsetG() ?: 0f)} G"
+        // Offset manuale rimosso — la calibrazione è ora automatica (fase 1 + fase 2)
+        txtOffset.text = "calib: phase ${dashService?.getCalibPhase() ?: 0}"
+        btnSetOffset.visibility = android.view.View.GONE
+        txtOffset.visibility    = android.view.View.VISIBLE
 
         updateLogStatus(txtLogStatus, btnToggleLog)
 
         btnSetOffset.setOnClickListener {
-            val svc = dashService
-            svc?.setGSensorOffset()
-            txtOffset.text = "offset: ${"%.2f".format(svc?.getGSensorOffsetG() ?: 0f)} G"
-            btnSetOffset.text = getString(R.string.btn_offset_saved)
-            btnSetOffset.setBackgroundColor(0xFF00CC44.toInt())
+            // Offset manuale rimosso — pulsante nascosto, questo handler non viene mai chiamato
         }
 
         btnToggleLog.setOnClickListener {
