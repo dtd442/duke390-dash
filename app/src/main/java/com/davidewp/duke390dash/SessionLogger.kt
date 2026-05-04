@@ -92,20 +92,21 @@ class SessionLogger(private val context: Context) {
      * @param gps      dati GPS
      */
     fun log(
-        state:    DashState,
-        gLateral: Float,
-        gLong:    Float = 0f,   // ← nuovo: beccheggio accelerometro Y
-        gVert:    Float = 0f,   // ← nuovo: verticale accelerometro Z
-        gyroX:    Float = 0f,
-        gyroY:    Float = 0f,
-        gyroZ:    Float = 0f,
-        gps:      GpsManager.GpsData = GpsManager.GpsData()
+        state:      DashState,
+        gLateral:   Float,
+        gLong:      Float = 0f,
+        gVert:      Float = 0f,
+        gyroX:      Float = 0f,
+        gyroY:      Float = 0f,
+        gyroZ:      Float = 0f,
+        gps:        GpsManager.GpsData = GpsManager.GpsData(),
+        calibDone:  Boolean = false     // true = dati IMU già ruotati negli assi della moto
     ) {
         if (!isLogging) return
         val ts = tsSdf.format(Date())
         try {
             writeCsvRow(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps)
-            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps)
+            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps, calibDone)
         } catch (e: Exception) {
             Log.e(TAG, "Errore scrittura log: ${e.message}")
         }
@@ -160,7 +161,8 @@ class SessionLogger(private val context: Context) {
         ts: String, state: DashState,
         gLateral: Float, gLong: Float, gVert: Float,
         gyroX: Float, gyroY: Float, gyroZ: Float,
-        gps: GpsManager.GpsData
+        gps: GpsManager.GpsData,
+        calibDone: Boolean = false
     ) {
         val ant  = state.tpmsAnt
         val post = state.tpmsPost
@@ -212,6 +214,7 @@ class SessionLogger(private val context: Context) {
                 put("gps_speed_kmh",  gps.speedKmh)
                 put("gps_accuracy_m", gps.accuracyM)
                 put("gps_available",  gps.available)
+                put("calib_done",     calibDone)     // true = IMU ruotata negli assi moto
             })
         }
 
