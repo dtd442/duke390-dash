@@ -33,49 +33,96 @@
     #app{display:none;flex-direction:column;min-height:100vh;}
     #app.on{display:flex;}
 
-    .sticky-top{position:sticky;top:0;z-index:10;background:var(--bg2);}
+    .sticky-top{position:sticky;top:0;z-index:50;background:var(--bg2);}
 
-    header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
-      padding:12px 20px;border-bottom:1px solid var(--border);}
-    .hb{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--or);letter-spacing:2px;}
-    .hm{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:4px;margin-top:2px;}
-    .hs{display:flex;gap:18px;flex-wrap:wrap;}
-    .hsi{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
-    .hsi-l{font-size:9px;font-family:var(--mono);color:var(--dim);letter-spacing:2px;}
-    .hsi-v{font-size:13px;font-family:var(--mono);font-weight:600;}
-    .hn{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--dim);
-      background:transparent;border:1px solid var(--border);padding:5px 12px;cursor:pointer;}
+    header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;
+      padding:8px 14px;border-bottom:1px solid var(--border);}
+    .hb{font-family:var(--mono);font-size:16px;font-weight:600;color:var(--or);letter-spacing:2px;line-height:1;}
+    .hm{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:4px;margin-top:1px;}
+    .hs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px 8px;}
+    @media(max-width:480px){.hs{grid-template-columns:repeat(3,1fr);}}
+    .hsi{display:flex;flex-direction:column;gap:1px;}
+    .hsi-l{font-size:8px;font-family:var(--mono);color:var(--dim);letter-spacing:1px;white-space:nowrap;}
+    .hsi-v{font-size:12px;font-family:var(--mono);font-weight:600;white-space:nowrap;}
+    .hn{font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--dim);
+      background:transparent;border:1px solid var(--border);padding:4px 10px;cursor:pointer;white-space:nowrap;}
     .hn:hover{color:var(--or);border-color:var(--or);}
 
-    .scrub{display:flex;align-items:center;gap:12px;padding:8px 20px;
-      border-bottom:1px solid var(--border);}
-    .sc-l{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:2px;white-space:nowrap;}
-    #scrub{flex:1;height:4px;accent-color:var(--or);cursor:pointer;}
-    .sc-t{font-family:var(--mono);font-size:11px;color:var(--text);min-width:50px;text-align:right;}
+    /* ── Timeline editor ── */
+    .tl-wrap{display:flex;flex-direction:column;gap:0;border-bottom:1px solid var(--border);}
 
+    /* riga overview: tutta la sessione */
+    .tl-overview{position:relative;height:36px;cursor:crosshair;user-select:none;background:var(--bg);}
+    #tlOvCanvas{display:block;width:100%;height:100%;}
+    /* finestra zoom sull'overview */
+    #tlWindow{position:absolute;top:0;height:100%;background:rgba(255,85,0,0.12);
+      border-left:1px solid var(--or);border-right:1px solid var(--or);pointer-events:none;
+      cursor:grab;}
+    /* la finestra arancio riceve gli eventi tramite il parent ovEl */
+    .tl-zoom{position:relative;height:44px;cursor:grab;user-select:none;
+      background:#0f1016;border-top:1px solid var(--border);}
+    .tl-zoom:active{cursor:grabbing;}
+    /* cursore sull'overview */
+    #tlOvCursor{position:absolute;top:0;width:1px;height:100%;background:rgba(255,255,255,0.6);pointer-events:none;}
+    #tlZmCanvas{display:block;width:100%;height:100%;}
+    #tlZmCursor{position:absolute;top:0;width:1px;height:100%;background:var(--or);pointer-events:none;}
+
+    /* riga info cursore */
+    .tl-info{display:flex;align-items:center;gap:16px;padding:4px 14px;background:var(--bg2);
+      border-top:1px solid var(--border);}
+    .tl-time{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--or);min-width:60px;}
+    .tl-zoom-ctrl{display:flex;align-items:center;gap:8px;margin-left:auto;}
+    .tl-zl{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:2px;}
+    .tl-zb{font-family:var(--mono);font-size:10px;color:var(--dim);background:transparent;
+      border:1px solid var(--border);padding:2px 8px;cursor:pointer;letter-spacing:1px;}
+    .tl-zb:hover{color:var(--or);border-color:var(--or);}
+    #tlZoomRange{width:100%;height:3px;accent-color:var(--or);cursor:pointer;display:block;}
+    .tl-slider-row{padding:4px 14px 6px;background:var(--bg2);}
+
+    /* ── HUD bar fissa in fondo ── */
+    .hud{position:fixed;bottom:0;left:0;right:0;z-index:1000;
+      display:none;align-items:center;justify-content:space-around;
+      background:rgba(11,12,16,0.95);backdrop-filter:blur(8px);
+      border-top:1px solid var(--border);padding:6px 16px;gap:12px;}
+    .hud.on{display:flex;}
+    .hud-item{display:flex;flex-direction:column;align-items:center;gap:1px;}
+    .hud-l{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:2px;}
+    .hud-v{font-family:var(--mono);font-size:22px;font-weight:600;line-height:1;}
+    @media(max-width:400px){.hud-v{font-size:18px;}}
+    /* spazio in fondo per non coprire contenuto */
+    .hud-spacer{height:72px;}
+
+    /* stats .pm più leggibili */
+
+    /* stats .pm più leggibili */
     .grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
     @media(max-width:600px){.grid{grid-template-columns:1fr;}}
-    .panel{background:var(--bg2);padding:16px 16px 12px;display:flex;flex-direction:column;gap:8px;}
+    .panel{background:var(--bg2);padding:14px 14px 10px;display:flex;flex-direction:column;gap:7px;}
     .panel.wide{grid-column:1/-1;}
-    .ph{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-    .pt{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:3px;color:var(--dim);}
-    .pv{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;}
+    .ph{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+    .pt{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:3px;color:var(--dim);}
+    .pv{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
     .pc{font-family:var(--mono);font-size:20px;font-weight:600;}
     .pc.s{font-size:15px;}
     .pu{font-family:var(--mono);font-size:9px;color:var(--dim);}
-    .pm{display:flex;gap:12px;flex-wrap:wrap;}
-    .pmi{font-family:var(--mono);font-size:9px;color:var(--dim);}
-    .pmi b{color:var(--text);font-weight:500;}
+    /* stats grid: 2 colonne su mobile invece di una riga orizzontale che va a capo */
+    .pm{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px 16px;}
+    .pmi{font-family:var(--mono);font-size:10px;color:var(--dim);padding:1px 0;}
+    .pmi b{color:var(--text);font-weight:600;}
     .cc{position:relative;width:100%;height:110px;}
     .panel:not(.wide) .cc{height:95px;}
     canvas.base{position:absolute;top:0;left:0;width:100%;height:100%;display:block;}
-    canvas.over{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;}
-    .leg{display:flex;gap:8px;flex-wrap:wrap;}
+    canvas.over{position:absolute;top:0;left:0;width:100%;height:100%;display:block;cursor:col-resize;}
+    .leg{display:flex;gap:6px;flex-wrap:wrap;}
     .legi{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--dim);
       cursor:pointer;user-select:none;padding:3px 6px;border-radius:3px;transition:opacity .15s;}
     .legi:hover{background:rgba(255,255,255,0.04);}
     .legi.off{opacity:0.3;}
-    .legc{width:20px;height:2px;border-radius:1px;transition:opacity .15s;}
+    .legc{width:18px;height:2px;border-radius:1px;}
+
+    /* asse dx per G-Force doppia scala */
+    .dual-axis-label-r{font-family:var(--mono);font-size:8px;color:var(--dim);
+      position:absolute;right:4px;top:2px;letter-spacing:1px;}
 
     .mil-on{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:600;
       letter-spacing:2px;color:#000;background:var(--re);padding:2px 6px;border-radius:2px;}
@@ -83,12 +130,21 @@
       letter-spacing:2px;color:var(--dim);}
 
     /* mappa */
-    .map-wrap{position:relative;width:100%;height:300px;overflow:hidden;background:#0d1117;}
+    .map-wrap{position:relative;width:100%;height:300px;overflow:hidden;background:#0d1117;z-index:1;}
     @media(max-width:600px){.map-wrap{height:220px;}}
     #lmap{width:100%;height:100%;}
-    /* override leaflet per dark mode */
-    .leaflet-tile{filter:brightness(0.85) saturate(0.7) hue-rotate(180deg) invert(1);}
+    /* CartoDB Voyager — nessun filtro necessario */
+    .leaflet-tile{filter:none;}
+    /* Satellite: brightness leggermente ridotta */
+    .map-satellite .leaflet-tile{filter:brightness(0.88) saturate(1.05);}
     .leaflet-container{background:#0d1117;}
+    /* toggle stile mappa */
+    .map-style-btn{position:absolute;top:8px;right:8px;z-index:500;
+      font-family:var(--mono);font-size:9px;letter-spacing:2px;
+      background:rgba(11,12,16,0.85);color:var(--dim);
+      border:1px solid var(--border);padding:4px 10px;cursor:pointer;
+      backdrop-filter:blur(4px);}
+    .map-style-btn:hover{color:var(--or);border-color:var(--or);}
     .map-no-gps{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
       justify-content:center;gap:10px;background:#0d1117;z-index:999;pointer-events:none;}
     .map-no-gps-t{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:3px;}
@@ -98,6 +154,23 @@
     .map-info-label{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:2px;}
     .map-info-value{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text);}
     @media(max-width:480px){.map-info-value{font-size:11px;}}
+
+    /* ── Lean angle gauge ── */
+    .lean-wrap{display:flex;align-items:center;justify-content:center;gap:16px;padding:4px 0;}
+    .lean-gauge{position:relative;width:160px;height:90px;flex-shrink:0;}
+    @media(max-width:600px){.lean-gauge{width:120px;height:68px;}}
+    .lean-svg{width:100%;height:100%;}
+    .lean-stats{display:flex;flex-direction:column;gap:6px;min-width:80px;}
+    .lean-stat{display:flex;flex-direction:column;gap:1px;}
+    .lean-stat-l{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:2px;}
+    .lean-stat-v{font-family:var(--mono);font-size:16px;font-weight:600;}
+
+    /* ── Gear indicator ── */
+    .gear-block{display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 12px;}
+    .gear-label{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:3px;}
+    .gear-num{font-family:var(--mono);font-size:56px;font-weight:600;line-height:1;color:var(--or);}
+    @media(max-width:600px){.gear-num{font-size:38px;}}
+    .gear-sub{font-family:var(--mono);font-size:9px;color:var(--dim);}
 
     .bot{display:flex;gap:1px;background:var(--border);border-top:1px solid var(--border);}
     .bc{flex:1;background:var(--bg2);padding:11px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;}
@@ -114,8 +187,8 @@
   <div class="L-t">DUKE 390</div>
   <div class="L-s">TELEMETRY ANALYZER</div>
   <div class="L-hr"></div>
-  <div class="L-d">Carica il JSON della sessione per analizzare tutti i canali di telemetria</div>
-  <button class="Lb" onclick="document.getElementById('fi').click()">&#9654;&nbsp; CARICA SESSIONE</button>
+  <div class="L-d">Load a session JSON file to analyse all telemetry channels</div>
+  <button class="Lb" onclick="document.getElementById('fi').click()">&#9654;&nbsp; LOAD SESSION</button>
   <button class="Ld" onclick="startSession(DEMO)">DEMO</button>
   <input type="file" id="fi" accept=".json" onchange="onFile(event)">
 </div>
@@ -125,27 +198,51 @@
     <header>
       <div><div class="hb">KTM</div><div class="hm">DUKE 390</div></div>
       <div class="hs">
-        <div class="hsi"><span class="hsi-l">DURATA</span>   <span class="hsi-v" id="h0" style="color:var(--cy)">—</span></div>
-        <div class="hsi"><span class="hsi-l">V MAX</span>     <span class="hsi-v" id="h1" style="color:var(--or)">—</span></div>
-        <div class="hsi"><span class="hsi-l">RPM MAX</span>   <span class="hsi-v" id="h2" style="color:var(--pu)">—</span></div>
-        <div class="hsi"><span class="hsi-l">G LAT MAX</span> <span class="hsi-v" id="h3" style="color:var(--ye)">—</span></div>
-        <div class="hsi"><span class="hsi-l">COOLANT MAX</span><span class="hsi-v" id="h4" style="color:var(--re)">—</span></div>
+        <div class="hsi"><span class="hsi-l">DURATION</span>  <span class="hsi-v" id="h0" style="color:var(--cy)">—</span></div>
+        <div class="hsi"><span class="hsi-l">TOP SPEED</span> <span class="hsi-v" id="h1" style="color:var(--or)">—</span></div>
+        <div class="hsi"><span class="hsi-l">MAX RPM</span>   <span class="hsi-v" id="h2" style="color:var(--pu)">—</span></div>
+        <div class="hsi"><span class="hsi-l">MAX G LAT</span> <span class="hsi-v" id="h3" style="color:var(--ye)">—</span></div>
+        <div class="hsi"><span class="hsi-l">MAX COOLANT</span><span class="hsi-v" id="h4" style="color:var(--re)">—</span></div>
       </div>
-      <button class="hn" onclick="document.getElementById('fi').click()">&#8635; NUOVA</button>
+      <button class="hn" onclick="document.getElementById('fi').click()">&#8635; NEW</button>
     </header>
-    <div class="scrub">
-      <span class="sc-l">CURSORE</span>
-      <input type="range" id="scrub" min="0" max="1000" value="0" oninput="onScrub(+this.value/1000)">
-      <span class="sc-t" id="sct">0:00.0</span>
+    <div class="tl-wrap">
+      <!-- 1. INFO + ZOOM PRESET BUTTONS -->
+      <div class="tl-info">
+        <span class="tl-time" id="sct">0:00.0</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim)" id="tlWinInfo">window: —</span>
+        <div class="tl-zoom-ctrl">
+          <span class="tl-zl">ZOOM</span>
+          <button class="tl-zb" onclick="tlZoomSec(10)">10s</button>
+          <button class="tl-zb" onclick="tlZoomSec(30)">30s</button>
+          <button class="tl-zb" onclick="tlZoomSec(60)">1min</button>
+          <button class="tl-zb" onclick="tlZoomSet(1)">ALL</button>
+        </div>
+      </div>
+      <!-- 2. FOCUS SIZE SLIDER -->
+      <div class="tl-slider-row">
+        <input type="range" id="tlZoomRange" min="1" max="100" value="100" oninput="tlZoomSlider(+this.value)">
+      </div>
+      <!-- 3. OVERVIEW: full session, drag to pan the focus window -->
+      <div class="tl-overview" id="tlOverview">
+        <canvas id="tlOvCanvas"></canvas>
+        <div id="tlWindow" style="left:0;width:100%"></div>
+        <div id="tlOvCursor" style="left:0"></div>
+      </div>
+      <!-- 4. FOCUS WINDOW: zoomed strip, drag to move cursor -->
+      <div class="tl-zoom" id="tlZoom">
+        <canvas id="tlZmCanvas"></canvas>
+        <div id="tlZmCursor" style="left:0"></div>
+      </div>
     </div>
   </div>
 
   <div class="grid">
 
-    <!-- 0: Velocità + RPM (wide) -->
+    <!-- 0: Speed + RPM (wide) -->
     <div class="panel wide">
       <div class="ph">
-        <span class="pt">VELOCITÀ · RPM</span>
+        <span class="pt">SPEED · RPM</span>
         <div class="pv">
           <span class="pc" id="c0" style="color:var(--or)">0</span><span class="pu">km/h</span>
           <span class="pc s" id="c1" style="color:var(--pu)">0</span><span class="pu">rpm</span>
@@ -158,30 +255,30 @@
         <div class="pmi">RPM AVG <b id="m2b">—</b></div>
       </div>
       <div class="leg" id="leg0">
-        <div class="legi" data-panel="0" data-key="speed"><div class="legc" style="background:var(--or)"></div>VELOCITÀ</div>
+        <div class="legi" data-panel="0" data-key="speed"><div class="legc" style="background:var(--or)"></div>SPEED</div>
         <div class="legi" data-panel="0" data-key="rpm"><div class="legc" style="background:var(--pu)"></div>RPM</div>
       </div>
       <div class="cc"><canvas class="base" id="b0"></canvas><canvas class="over" id="o0"></canvas></div>
     </div>
 
-    <!-- 1: Manopola / TPS / Carico -->
+    <!-- 1: Throttle / TPS / Engine Load -->
     <div class="panel">
       <div class="ph">
-        <span class="pt">MANOPOLA · FARFALLA · CARICO</span>
+        <span class="pt">THROTTLE · TPS · ENGINE LOAD</span>
         <div class="pv">
-          <span class="pc" id="c2" style="color:var(--cy)">0</span><span class="pu">% MAN</span>
+          <span class="pc" id="c2" style="color:var(--cy)">0</span><span class="pu">% THROT</span>
           <span class="pc s" id="c3" style="color:var(--gn)">0</span><span class="pu">% TPS</span>
           <span class="pc s" id="c3b" style="color:var(--ye)">0</span><span class="pu">% LOAD</span>
         </div>
       </div>
       <div class="pm">
-        <div class="pmi">% PIENO GAS <b id="m3">—</b>%</div>
-        <div class="pmi">DELTA MAX <b id="m3b">—</b>%</div>
+        <div class="pmi">WOT <b id="m3">—</b>%</div>
+        <div class="pmi">MAX DELTA <b id="m3b">—</b>%</div>
       </div>
       <div class="leg" id="leg1">
-        <div class="legi" data-panel="1" data-key="accel"><div class="legc" style="background:var(--cy)"></div>MANOPOLA</div>
-        <div class="legi" data-panel="1" data-key="tps"><div class="legc" style="background:var(--gn)"></div>TPS FARFALLA</div>
-        <div class="legi" data-panel="1" data-key="load"><div class="legc" style="background:var(--ye)"></div>CARICO MOTORE</div>
+        <div class="legi" data-panel="1" data-key="accel"><div class="legc" style="background:var(--cy)"></div>THROTTLE</div>
+        <div class="legi" data-panel="1" data-key="tps"><div class="legc" style="background:var(--gn)"></div>TPS</div>
+        <div class="legi" data-panel="1" data-key="load"><div class="legc" style="background:var(--ye)"></div>ENGINE LOAD</div>
       </div>
       <div class="cc"><canvas class="base" id="b1"></canvas><canvas class="over" id="o1"></canvas></div>
     </div>
@@ -189,7 +286,7 @@
     <!-- 2: G-Force -->
     <div class="panel">
       <div class="ph">
-        <span class="pt">G-FORCE</span>
+        <span class="pt">G-FORCE · GYRO</span>
         <div class="pv">
           <span class="pc" id="c4" style="color:var(--cy)">0.000</span><span class="pu">g LAT</span>
           <span class="pc s" id="c5" style="color:var(--ye)">0.000</span><span class="pu">rad/s PITCH</span>
@@ -200,46 +297,48 @@
         <div class="pmi">MAX PITCH <b id="m6">—</b> rad/s</div>
       </div>
       <div class="leg" id="leg2">
-        <div class="legi" data-panel="2" data-key="glat"><div class="legc" style="background:var(--cy)"></div>LATERALE g</div>
+        <div class="legi" data-panel="2" data-key="glat"><div class="legc" style="background:var(--cy)"></div>LATERAL g</div>
         <div class="legi" data-panel="2" data-key="gfr"><div class="legc" style="background:var(--ye)"></div>PITCH rad/s</div>
         <div class="legi" data-panel="2" data-key="gyroX"><div class="legc" style="background:var(--gn)"></div>ROLL rad/s</div>
         <div class="legi" data-panel="2" data-key="gyroZ"><div class="legc" style="background:var(--re)"></div>YAW rad/s</div>
       </div>
-      <div class="cc"><canvas class="base" id="b2"></canvas><canvas class="over" id="o2"></canvas></div>
+      <div class="cc" style="position:relative"><canvas class="base" id="b2"></canvas><canvas class="over" id="o2"></canvas>
+        <span class="dual-axis-label-r" style="color:var(--ye)">rad/s →</span>
+      </div>
     </div>
 
-    <!-- 3: TPMS — pressione ANT + POST + temperatura ANT + POST -->
+    <!-- 3: TPMS — pressure FRONT + REAR + temperature FRONT + REAR -->
     <div class="panel">
       <div class="ph">
-        <span class="pt">GOMME</span>
+        <span class="pt">TYRES</span>
         <div class="pv">
-          <span class="pc" id="c6" style="color:var(--cy)">—</span><span class="pu">bar ANT</span>
-          <span class="pc s" id="c7" style="color:var(--ow)">—</span><span class="pu">bar POST</span>
-          <span class="pc s" id="c6t" style="color:var(--gn)">—</span><span class="pu">°C ANT</span>
-          <span class="pc s" id="c7t" style="color:var(--re)">—</span><span class="pu">°C POST</span>
+          <span class="pc" id="c6" style="color:var(--cy)">—</span><span class="pu">bar F</span>
+          <span class="pc s" id="c7" style="color:var(--ow)">—</span><span class="pu">bar R</span>
+          <span class="pc s" id="c6t" style="color:var(--gn)">—</span><span class="pu">°C F</span>
+          <span class="pc s" id="c7t" style="color:var(--re)">—</span><span class="pu">°C R</span>
         </div>
       </div>
       <div class="pm">
-        <div class="pmi">P ANT avg <b id="m7">—</b> bar</div>
-        <div class="pmi">P POST avg <b id="m8">—</b> bar</div>
-        <div class="pmi">T ANT max <b id="m7t">—</b>°C</div>
-        <div class="pmi">T POST max <b id="m8t">—</b>°C</div>
+        <div class="pmi">FRONT avg <b id="m7">—</b> bar</div>
+        <div class="pmi">REAR avg <b id="m8">—</b> bar</div>
+        <div class="pmi">FRONT max <b id="m7t">—</b>°C</div>
+        <div class="pmi">REAR max <b id="m8t">—</b>°C</div>
       </div>
       <div class="leg" id="leg3">
-        <div class="legi" data-panel="3" data-key="pant"><div class="legc" style="background:var(--cy)"></div>P ANT</div>
-        <div class="legi" data-panel="3" data-key="ppost"><div class="legc" style="background:var(--ow)"></div>P POST</div>
-        <div class="legi" data-panel="3" data-key="tant"><div class="legc" style="background:var(--gn)"></div>T° ANT</div>
-        <div class="legi" data-panel="3" data-key="tpost"><div class="legc" style="background:var(--re)"></div>T° POST</div>
+        <div class="legi" data-panel="3" data-key="pant"><div class="legc" style="background:var(--cy)"></div>PRESS FRONT</div>
+        <div class="legi" data-panel="3" data-key="ppost"><div class="legc" style="background:var(--ow)"></div>PRESS REAR</div>
+        <div class="legi" data-panel="3" data-key="tant"><div class="legc" style="background:var(--gn)"></div>TEMP FRONT</div>
+        <div class="legi" data-panel="3" data-key="tpost"><div class="legc" style="background:var(--re)"></div>TEMP REAR</div>
       </div>
       <div class="cc"><canvas class="base" id="b3"></canvas><canvas class="over" id="o3"></canvas></div>
     </div>
 
-    <!-- 4: Temperature — Coolant + IAT (stessa scala °C, no anticipo) -->
+    <!-- 4: Temperatures — Coolant + IAT -->
     <div class="panel">
       <div class="ph">
-        <span class="pt">TEMPERATURE</span>
+        <span class="pt">TEMPERATURES</span>
         <div class="pv">
-          <span class="pc" id="c8" style="color:var(--re)">—</span><span class="pu">°C COOL</span>
+          <span class="pc" id="c8" style="color:var(--re)">—</span><span class="pu">°C COOLANT</span>
           <span class="pc s" id="c9" style="color:var(--ye)">—</span><span class="pu">°C IAT</span>
         </div>
       </div>
@@ -255,10 +354,10 @@
       <div class="cc"><canvas class="base" id="b4"></canvas><canvas class="over" id="o4"></canvas></div>
     </div>
 
-    <!-- 5: Gestione Motore — MAP + Anticipo + Fuel Trim -->
+    <!-- 5: Engine Management — MAP + Ignition + Fuel Trim -->
     <div class="panel">
       <div class="ph">
-        <span class="pt">GESTIONE MOTORE</span>
+        <span class="pt">ENGINE MANAGEMENT</span>
         <div class="pv">
           <span class="pc" id="c10b" style="color:var(--gn)">—</span><span class="pu">kPa MAP</span>
           <span class="pc s" id="c9b" style="color:var(--pu)">—</span><span class="pu">° IGN</span>
@@ -272,77 +371,154 @@
       </div>
       <div class="leg" id="leg5">
         <div class="legi" data-panel="5" data-key="map"><div class="legc" style="background:var(--gn)"></div>MAP kPa</div>
-        <div class="legi" data-panel="5" data-key="ign"><div class="legc" style="background:var(--pu)"></div>ANTICIPO °</div>
+        <div class="legi" data-panel="5" data-key="ign"><div class="legc" style="background:var(--pu)"></div>IGN TIMING °</div>
         <div class="legi" data-panel="5" data-key="trim"><div class="legc" style="background:var(--cy)"></div>FUEL TRIM %</div>
       </div>
       <div class="cc"><canvas class="base" id="b5"></canvas><canvas class="over" id="o5"></canvas></div>
     </div>
 
-    <!-- 6: Carburante -->
+    <!-- 6: Fuel consumption -->
     <div class="panel wide">
       <div class="ph">
-        <span class="pt">CARBURANTE</span>
+        <span class="pt">FUEL CONSUMPTION</span>
         <div class="pv">
-          <span class="pc" id="c10" style="color:var(--ow)">—</span><span class="pu">L/100</span>
+          <span class="pc" id="c10" style="color:var(--ow)">—</span><span class="pu">L/100km</span>
         </div>
       </div>
       <div class="pm">
-        <div class="pmi">CONSUMO MAX <b id="m12">—</b> L/100</div>
-        <div class="pmi">CONSUMO AVG <b id="m13">—</b> L/100</div>
+        <div class="pmi">MAX <b id="m12">—</b> L/100km</div>
+        <div class="pmi">AVG <b id="m13">—</b> L/100km</div>
       </div>
       <div class="leg" id="leg6">
-        <div class="legi" data-panel="6" data-key="fuel"><div class="legc" style="background:var(--ow)"></div>CONSUMO L/100</div>
+        <div class="legi" data-panel="6" data-key="fuel"><div class="legc" style="background:var(--ow)"></div>FUEL L/100km</div>
       </div>
       <div class="cc"><canvas class="base" id="b6"></canvas><canvas class="over" id="o6"></canvas></div>
     </div>
 
-    <!-- 7: Mappa GPS + Altitudine (wide, occupa tutta la larghezza) -->
+    <!-- 7: Lean angle + Gear (wide) -->
+    <div class="panel wide" id="panel-lean">
+      <div class="ph">
+        <span class="pt">LEAN ANGLE · GEAR</span>
+        <div class="pv">
+          <span class="pc" id="cLean" style="color:var(--ye)">0.0</span><span class="pu">°</span>
+        </div>
+      </div>
+      <div class="lean-wrap">
+        <div class="lean-gauge">
+          <svg class="lean-svg" id="leanSvg" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">
+            <path id="lgArcBgR" d="" fill="none" stroke="#1a1d28" stroke-width="14" stroke-linecap="butt"/>
+            <path id="lgArcBgL" d="" fill="none" stroke="#1a1d28" stroke-width="14" stroke-linecap="butt"/>
+            <path id="lgArcR" d="" fill="none" stroke="#00d47a" stroke-width="14" stroke-linecap="butt" opacity="0.9"/>
+            <path id="lgArcL" d="" fill="none" stroke="#00c8e0" stroke-width="14" stroke-linecap="butt" opacity="0.9"/>
+            <g id="lgTicks" stroke="#3a3d52" stroke-width="1"></g>
+            <line id="lgNeedle" x1="100" y1="100" x2="100" y2="20" stroke="var(--or)" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="100" cy="100" r="5" fill="var(--or)"/>
+            <text x="8"   y="108" font-family="IBM Plex Mono" font-size="9" fill="#52556a">60°</text>
+            <text x="168" y="108" font-family="IBM Plex Mono" font-size="9" fill="#52556a">60°</text>
+            <text x="93"  y="12"  font-family="IBM Plex Mono" font-size="9" fill="#52556a">0°</text>
+            <text id="lgVal" x="100" y="88" font-family="IBM Plex Mono" font-size="16" font-weight="600"
+                  fill="var(--ye)" text-anchor="middle">0.0°</text>
+            <text x="14"  y="78" font-family="IBM Plex Mono" font-size="8" fill="#52556a">L</text>
+            <text x="180" y="78" font-family="IBM Plex Mono" font-size="8" fill="#52556a">R</text>
+          </svg>
+        </div>
+        <div class="gear-block">
+          <span class="gear-label">GEAR</span>
+          <span class="gear-num" id="gearNum">—</span>
+          <span class="gear-sub" id="gearRatio">—</span>
+        </div>
+        <div class="lean-stats">
+          <div class="lean-stat">
+            <span class="lean-stat-l">MAX RIGHT</span>
+            <span class="lean-stat-v" id="leanMaxR" style="color:var(--gn)">—°</span>
+          </div>
+          <div class="lean-stat">
+            <span class="lean-stat-l">MAX LEFT</span>
+            <span class="lean-stat-v" id="leanMaxL" style="color:var(--cy)">—°</span>
+          </div>
+          <div class="lean-stat">
+            <span class="lean-stat-l">AVG |°|</span>
+            <span class="lean-stat-v" id="leanAvg" style="color:var(--dim)">—°</span>
+          </div>
+          <div class="lean-stat">
+            <span class="lean-stat-l">% IN CORNER</span>
+            <span class="lean-stat-v" id="leanPct" style="color:var(--ye)">—%</span>
+          </div>
+        </div>
+      </div>
+      <div class="leg" id="leg8">
+        <div class="legi" data-panel="8" data-key="lean"><div class="legc" style="background:var(--ye)"></div>LEAN °</div>
+        <div class="legi" data-panel="8" data-key="gear"><div class="legc" id="legcGear" style="background:var(--or)"></div>GEAR</div>
+      </div>
+      <div class="cc" style="height:80px"><canvas class="base" id="b8"></canvas><canvas class="over" id="o8"></canvas></div>
+    </div>
+
+    <!-- 8: GPS Track + Altitude (wide) -->
     <div class="panel wide" id="panel-map">
       <div class="ph">
-        <span class="pt">TRACCIATO GPS · ALTITUDINE</span>
+        <span class="pt">GPS TRACK · ALTITUDE</span>
       </div>
-      <!-- Mappa Leaflet/OSM -->
-      <div class="map-wrap">
+      <!-- Mappa Leaflet -->
+      <div class="map-wrap" id="mapWrap">
         <div id="lmap"></div>
+        <button class="map-style-btn" id="mapStyleBtn" onclick="toggleMapStyle()">🛰 SATELLITE</button>
         <div class="map-no-gps" id="mapNoGps">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#52556a" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-          <span class="map-no-gps-t">DATI GPS NON DISPONIBILI</span>
+          <span class="map-no-gps-t">NO GPS DATA</span>
         </div>
       </div>
 
       <!-- Riga info GPS sotto la mappa -->
       <div class="map-info-row" id="mapInfoRow" style="display:none">
         <div class="map-info-cell">
-          <span class="map-info-label">LATITUDINE</span>
+          <span class="map-info-label">LATITUDE</span>
           <span class="map-info-value" id="ciLat" style="color:var(--dim)">—</span>
         </div>
         <div class="map-info-cell">
-          <span class="map-info-label">LONGITUDINE</span>
+          <span class="map-info-label">LONGITUDE</span>
           <span class="map-info-value" id="ciLon" style="color:var(--dim)">—</span>
         </div>
         <div class="map-info-cell">
-          <span class="map-info-label">ALTITUDINE</span>
+          <span class="map-info-label">ALTITUDE</span>
           <span class="map-info-value" id="ciAlt" style="color:var(--cy)">—</span>
         </div>
         <div class="map-info-cell">
-          <span class="map-info-label">VEL. GPS</span>
+          <span class="map-info-label">GPS SPEED</span>
           <span class="map-info-value" id="ciGspd" style="color:var(--gn)">—</span>
         </div>
       </div>
 
     </div>
 
+  </div><!-- /grid -->
+
+  <!-- HUD fisso in fondo: speed / RPM / gear sempre visibili -->
+  <div class="hud" id="hud">
+    <div class="hud-item">
+      <span class="hud-l">SPEED</span>
+      <span class="hud-v" id="hudSpd" style="color:var(--or)">—</span>
+      <span class="hud-l">km/h</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-l">RPM</span>
+      <span class="hud-v" id="hudRpm" style="color:var(--pu)">—</span>
+    </div>
+    <div class="hud-item">
+      <span class="hud-l">GEAR</span>
+      <span class="hud-v" id="hudGear" style="color:var(--or)">—</span>
+    </div>
   </div>
 
   <div class="bot">
-    <div class="bc"><span class="bc-l">DISTANZA EST.</span> <span class="bc-v" id="bt0" style="color:var(--cy)">—</span></div>
+    <div class="bc"><span class="bc-l">EST. DISTANCE</span> <span class="bc-v" id="bt0" style="color:var(--cy)">—</span></div>
     <div class="bc"><span class="bc-l">FRAMES</span>        <span class="bc-v" id="bt1" style="color:var(--dim)">—</span></div>
-    <div class="bc"><span class="bc-l">FREQUENZA</span>     <span class="bc-v" id="bt2" style="color:var(--dim)">—</span></div>
-    <div class="bc"><span class="bc-l">G LAT MAX</span>     <span class="bc-v" id="bt3" style="color:var(--ye)">—</span></div>
-    <div class="bc"><span class="bc-l">% PIENO GAS</span>   <span class="bc-v" id="bt4" style="color:var(--gn)">—</span></div>
-    <div class="bc"><span class="bc-l">BATTERIA</span>      <span class="bc-v" id="bt5" style="color:var(--ow)">—</span></div>
+    <div class="bc"><span class="bc-l">SAMPLE RATE</span>   <span class="bc-v" id="bt2" style="color:var(--dim)">—</span></div>
+    <div class="bc"><span class="bc-l">MAX G LAT</span>     <span class="bc-v" id="bt3" style="color:var(--ye)">—</span></div>
+    <div class="bc"><span class="bc-l">WOT %</span>         <span class="bc-v" id="bt4" style="color:var(--gn)">—</span></div>
+    <div class="bc"><span class="bc-l">BATTERY</span>       <span class="bc-v" id="bt5" style="color:var(--ow)">—</span></div>
     <div class="bc"><span class="bc-l">DTC · MIL</span>     <span class="bc-v" id="bt6">—</span></div>
   </div>
+  <div class="hud-spacer"></div>
 </div>
 
 <script>
@@ -351,7 +527,39 @@
   const DPR = window.devicePixelRatio || 1;
   const PAD = 10;
 
-  // ── Leaflet / OSM ──────────────────────────────────────────────
+  // ── Tile layers ───────────────────────────────────────────────
+  const TILE_LAYERS = {
+    light: {
+      url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      opts: { maxZoom: 19, subdomains: 'abcd' },
+      label: '🛰 SATELLITE'
+    },
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      opts: { maxZoom: 19 },
+      label: '🗺 MAP'
+    }
+  };
+  let currentMapStyle = 'light';
+  let activeBaseLayer = null;
+
+  function toggleMapStyle() {
+    if (!lmap) return;
+    currentMapStyle = currentMapStyle === 'dark' ? 'satellite' : 'dark';
+    const cfg = TILE_LAYERS[currentMapStyle];
+    // remove old base layer
+    if (activeBaseLayer) lmap.removeLayer(activeBaseLayer);
+    activeBaseLayer = L.tileLayer(cfg.url, cfg.opts).addTo(lmap);
+    // push base layer to bottom (behind track polylines)
+    activeBaseLayer.bringToBack();
+    // toggle satellite class for brightness tweak
+    const wrap = document.getElementById('mapWrap');
+    if (wrap) wrap.classList.toggle('map-satellite', currentMapStyle === 'satellite');
+    // update button label (shows next action)
+    const btn = document.getElementById('mapStyleBtn');
+    if (btn) btn.textContent = cfg.label;
+  }
+
   let lmap = null, mapCursorMarker = null;
 
   function lerpColor(a, b, t) {
@@ -394,9 +602,18 @@
     // Init Leaflet una sola volta
     if (!lmap) {
       lmap = L.map('lmap', { zoomControl: true, attributionControl: false });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      }).addTo(lmap);
+      // CartoDB Dark Matter — dark, no key required, free for public use
+      const cfg = TILE_LAYERS[currentMapStyle];
+      activeBaseLayer = L.tileLayer(cfg.url, cfg.opts).addTo(lmap);
+
+      // Rileva interazione utente: sospende auto-follow per 4 secondi
+      const resumeFollow = () => {
+        mapUserInteracting = true;
+        clearTimeout(mapInteractTimer);
+        mapInteractTimer = setTimeout(() => { mapUserInteracting = false; }, 4000);
+      };
+      lmap.on('dragstart', resumeFollow);
+      lmap.on('zoomstart', resumeFollow);
     } else {
       lmap.eachLayer(layer => {
         if (layer instanceof L.Polyline || layer instanceof L.CircleMarker)
@@ -420,13 +637,22 @@
     }
     const smoothed = smoothPts(pts, 5);
 
-    // Tracciato colorato per velocità OBD
-    for (let i = 0; i < smoothed.length - 1; i++) {
-      L.polyline(
-        [[smoothed[i].lat, smoothed[i].lon], [smoothed[i+1].lat, smoothed[i+1].lon]],
-        { color: speedColor(smoothed[i].spd, maxSpd), weight: 4, opacity: 0.9 }
-      ).addTo(lmap);
+    // Speed-colored track — weight adapts to zoom level
+    const trackPolylines = [];
+    function trackWeight() {
+      const z = lmap.getZoom();
+      return z <= 12 ? 2 : z <= 14 ? 3 : z <= 16 ? 4 : 5;
     }
+    for (let i = 0; i < smoothed.length - 1; i++) {
+      const seg = [[smoothed[i].lat, smoothed[i].lon], [smoothed[i+1].lat, smoothed[i+1].lon]];
+      const pl = L.polyline(seg, { color: speedColor(smoothed[i].spd, maxSpd), weight: trackWeight(), opacity: 0.95 }).addTo(lmap);
+      trackPolylines.push(pl);
+    }
+    // update weight on zoom
+    lmap.on('zoom', () => {
+      const w = trackWeight();
+      trackPolylines.forEach(pl => pl.setStyle({ weight: w }));
+    });
 
     // Marker inizio / fine
     L.circleMarker([smoothed[0].lat, smoothed[0].lon], {
@@ -478,6 +704,10 @@
     return bestPt;
   }
 
+  // flag: l'utente sta interagendo con la mappa → non fare auto-pan
+  let mapUserInteracting = false;
+  let mapInteractTimer = null;
+
   function updateMapCursor(idx) {
     if (!lmap || !window._mapPts || !mapCursorMarker) return;
     const pts      = window._mapPts;
@@ -495,7 +725,23 @@
     const snapped = snapToPolyline(best.lat, best.lon, smoothed);
     mapCursorMarker.setLatLng([snapped.lat, snapped.lon]);
 
-    // Info row: mostra coordinate raw (più precise per i dati), posizione snapped visiva
+    // ── Auto-follow: pan solo se il marker è uscito dal viewport ──
+    if (!mapUserInteracting) {
+      const mapBounds = lmap.getBounds();
+      // aggiunge un margine del 15% per non aspettare che esca al bordo esatto
+      const sw = mapBounds.getSouthWest(), ne = mapBounds.getNorthEast();
+      const latSpan = ne.lat - sw.lat, lonSpan = ne.lng - sw.lng;
+      const margin = 0.15;
+      const innerBounds = L.latLngBounds(
+        [sw.lat + latSpan*margin, sw.lng + lonSpan*margin],
+        [ne.lat - latSpan*margin, ne.lng - lonSpan*margin]
+      );
+      if (!innerBounds.contains([snapped.lat, snapped.lon])) {
+        lmap.panTo([snapped.lat, snapped.lon], { animate: true, duration: 0.4 });
+      }
+    }
+
+    // Info row
     if ($('ciLat'))  $('ciLat').textContent  = best.lat.toFixed(6);
     if ($('ciLon'))  $('ciLon').textContent  = best.lon.toFixed(6);
     if ($('ciAlt'))  $('ciAlt').textContent  = best.alt != null ? Math.round(best.alt) + ' m' : '—';
@@ -546,7 +792,7 @@
     e.target.value = '';
     const r = new FileReader();
     r.onload = ev => {
-      let d; try { d = JSON.parse(ev.target.result); } catch(err) { alert('JSON non valido: '+err); return; }
+      let d; try { d = JSON.parse(ev.target.result); } catch(err) { alert('Invalid JSON: '+err); return; }
       startSession(d);
     };
     r.readAsText(file);
@@ -554,7 +800,7 @@
 
   function startSession(raw) {
     F = raw.filter(f => f && f.obd);
-    if (!F.length) { alert('Nessun frame valido'); return; }
+    if (!F.length) { alert('No valid frames found'); return; }
     // reset toggle state
     for (const k in hidden) delete hidden[k];
     document.querySelectorAll('.legi.off').forEach(el => el.classList.remove('off'));
@@ -562,8 +808,11 @@
     computeStats();
     $('loader').style.display = 'none';
     $('app').classList.add('on');
+    $('hud').classList.add('on');
     requestAnimationFrame(() => requestAnimationFrame(() => {
       initCanvases();
+      initLeanGauge();
+      initTimeline();
       initToggles();
       drawBases();
       initMap();
@@ -715,11 +964,60 @@
     CH.ppost_raw = F.map(f => { const v = gv(f,'tpms_post.pressure_bar',null); return (v && v>0) ? v : null; });
     CH.tant_raw  = F.map(f => { const v = gv(f,'tpms_ant.temp_c',null);        return (v && v>0) ? v : null; });
     CH.tpost_raw = F.map(f => { const v = gv(f,'tpms_post.temp_c',null);       return (v && v>0) ? v : null; });
+
+    // ── Lean angle (angolo di piega) ─────────────────────────────
+    // Formula: lean = atan2(g_lateral, sqrt(1 - g_lateral²)) in gradi
+    // Positivo = destra, negativo = sinistra
+    CH.lean = F.map(f => {
+      const gl = gv(f, 'sensors.g_lateral', 0);
+      const clamp = Math.max(-0.999, Math.min(0.999, gl));
+      return Math.atan2(clamp, Math.sqrt(Math.max(0, 1 - clamp*clamp))) * (180/Math.PI);
+    });
+
+    // ── Gear detection ───────────────────────────────────────────
+    // Rapporti totali: primaria × marcia × finale
+    // Primaria: 30:80 = 2.6667, Finale: 15:45 = 3.000
+    // overall_ratio = primaria × gear_ratio × finale
+    // speed_kmh = rpm × (60/1000) × circonferenza / overall_ratio
+    // Circonferenza ruota posteriore Duke 390: ~1.95 m (150/60-17)
+    // speed = rpm * 60 * 1.95 / (overall * 1000)  → overall = rpm * 60 * 1.95 / (speed * 1000)
+    const PRIMARY = 80/30;  // 2.6667
+    const FINAL   = 45/15;  // 3.000
+    const CIRC_M  = 1.95;   // circonferenza ruota post (m) — 150/60 R17
+    const GEAR_RATIOS = [
+      { g:1, r: 32/12 },  // 2.667
+      { g:2, r: 30/16 },  // 1.875
+      { g:3, r: 27/19 },  // 1.421
+      { g:4, r: 25/22 },  // 1.136
+      { g:5, r: 23/24 },  // 0.958
+      { g:6, r: 22/26 },  // 0.846
+    ];
+    // overall = PRIMARY × gear_ratio × FINAL
+    const OVERALL = GEAR_RATIOS.map(gr => ({ g: gr.g, o: PRIMARY * gr.r * FINAL }));
+
+    CH.gear = F.map(f => {
+      const rpm   = gv(f, 'obd.rpm', 0);
+      const speed = gv(f, 'obd.speed_kmh', 0);
+      if (rpm < 800 || speed < 5) return 0; // neutro/fermo
+      // ratio effettivo: rpm / (speed [km/h → m/s → giri]) 
+      // speed_mps = speed/3.6, wheel_rps = speed_mps / CIRC_M
+      // overall = rpm/60 / wheel_rps = rpm * CIRC_M / (speed/3.6 * 60)
+      const overallEff = (rpm * CIRC_M) / (speed / 3.6 * 60);
+      // trova la marcia con overall più vicino
+      let best = 0, bestDelta = Infinity;
+      for (const gr of OVERALL) {
+        const delta = Math.abs(overallEff - gr.o);
+        if (delta < bestDelta) { bestDelta = delta; best = gr.g; }
+      }
+      // se lo scarto è troppo grande (> 30%) = incerto
+      const matched = OVERALL.find(gr => gr.g === best);
+      return bestDelta / matched.o < 0.30 ? best : 0;
+    });
   }
 
   // ── canvas init ────────────────────────────────────────────────
   function initCanvases() {
-    [0,1,2,3,4,5,6].forEach(i => {
+    [0,1,2,3,4,5,6,8].forEach(i => {
       const bc = $('b'+i), oc = $('o'+i);
       if (!bc || !oc) return;
       const cc = bc.parentElement;
@@ -732,23 +1030,411 @@
       });
       canvases[i] = { base: bc, over: oc, W, H };
     });
+    bindCanvasDrag();
   }
 
-  // ── primitives ─────────────────────────────────────────────────
+  // ── Drag su qualsiasi grafico → sposta cursore ─────────────────
+  // Su mobile: distingue intento verticale (scroll pagina) da orizzontale (scrub)
+  // usando i primi pixel di movimento come indicatore.
+  let _canvasDragBound = false;
+  function bindCanvasDrag() {
+    if (_canvasDragBound) return;
+    _canvasDragBound = true;
+
+    // Soglia pixel prima di decidere l'intento del touch
+    const INTENT_THRESHOLD = 8;
+
+    // stati per touch
+    let touchState = 'idle'; // 'idle' | 'pending' | 'scrubbing' | 'scrolling'
+    let touchStartX = 0, touchStartY = 0;
+    let activePanelIdx = null;
+
+    // stati per mouse (sempre scrub, nessuna ambiguità)
+    let mouseDragging = false;
+    let mousePanelIdx = null;
+
+    function panelFromTarget(el) {
+      let cur = el;
+      while (cur && cur !== document.body) {
+        if (cur.tagName === 'CANVAS') {
+          const id = cur.id;
+          if (id && (id.startsWith('b') || id.startsWith('o'))) {
+            const idx = parseInt(id.slice(1));
+            return isNaN(idx) ? null : idx;
+          }
+        }
+        cur = cur.parentElement;
+      }
+      return null;
+    }
+
+    function scrubFromClientX(clientX, panelIdx) {
+      const cv = canvases[panelIdx];
+      if (!cv) return;
+      const rect = cv.over.getBoundingClientRect();
+      const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const pct = tlZoomStart + frac * (tlZoomEnd - tlZoomStart);
+      onScrub(pct);
+    }
+
+    // ── Mouse: sempre scrub diretto, nessuna ambiguità ────────────
+    document.addEventListener('mousedown', e => {
+      const idx = panelFromTarget(e.target);
+      if (idx === null) return;
+      mouseDragging = true;
+      mousePanelIdx = idx;
+      e.preventDefault();
+      scrubFromClientX(e.clientX, idx);
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!mouseDragging || mousePanelIdx === null) return;
+      scrubFromClientX(e.clientX, mousePanelIdx);
+    });
+
+    document.addEventListener('mouseup', () => {
+      mouseDragging = false;
+      mousePanelIdx = null;
+    });
+
+    // ── Touch: aspetta INTENT_THRESHOLD px per capire l'intento ───
+    document.addEventListener('touchstart', e => {
+      const idx = panelFromTarget(e.target);
+      if (idx === null) return;
+      touchState = 'pending';
+      activePanelIdx = idx;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      // NON fare scrub ancora — aspetta il primo move
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+      if (activePanelIdx === null) return;
+
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+
+      if (touchState === 'pending') {
+        if (dx < INTENT_THRESHOLD && dy < INTENT_THRESHOLD) return; // ancora in attesa
+        // decide intento in base alla direzione predominante
+        touchState = dx > dy ? 'scrubbing' : 'scrolling';
+      }
+
+      if (touchState === 'scrubbing') {
+        // blocca lo scroll della pagina solo se stiamo scrubbando
+        e.preventDefault();
+        scrubFromClientX(e.touches[0].clientX, activePanelIdx);
+      }
+      // se 'scrolling': non fare nulla, la pagina scrolla normalmente
+    }, { passive: false }); // passive:false per poter chiamare preventDefault
+
+    document.addEventListener('touchend', () => {
+      touchState = 'idle';
+      activePanelIdx = null;
+    });
+  }
+
+  // ── Decimazione adattiva ───────────────────────────────────────
+  // Riduce i punti al massimo necessario per la larghezza canvas.
+  // Per ogni "bucket" di pixel prende min, max e ultimo valore
+  // così i picchi non vengono mai persi, ma 10000 frame su 400px
+  // diventano 400*3 = 1200 punti invece di 10000.
+  function decimate(data, W, i0, i1) {
+    const n = i1 - i0;
+    if (n <= W * 2) {
+      // non serve decimare — ritorna il range diretto
+      return { pts: data.slice(i0, i1), offset: i0 };
+    }
+    const buckets = Math.ceil(W);
+    const out = [];
+    for (let b = 0; b < buckets; b++) {
+      const from = i0 + Math.floor(b / buckets * n);
+      const to   = i0 + Math.floor((b + 1) / buckets * n);
+      let mn = Infinity, mx = -Infinity, last = null;
+      for (let k = from; k < to && k < i1; k++) {
+        const v = data[k];
+        if (v == null) continue;
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+        last = v;
+      }
+      if (last == null) { out.push(null); continue; }
+      // push min poi max (o inverso se decrescente) per mantenere i picchi
+      out.push(mn); if (mn !== mx) out.push(mx);
+    }
+    return { pts: out, offset: -1 }; // offset -1 = dati già mappati su W
+  }
+
+  // ── Timeline state ─────────────────────────────────────────────
+  // zoomStart/zoomEnd = [0..1] frazione della sessione visibile nella finestra
+  let tlZoomStart = 0, tlZoomEnd = 1;
+  // dragMode gestito dentro bindTimelineEvents
+
+  // Converte frazione globale [0..1] in frame index
+  function pctToIdx(pct) { return Math.min(F.length-1, Math.round(pct*(F.length-1))); }
+
+  // ── Timeline overview canvas ───────────────────────────────────
+  let tlOvW = 0, tlOvH = 0, tlZmW = 0, tlZmH = 0;
+
+  function initTimeline() {
+    const ov = $('tlOvCanvas'), zm = $('tlZmCanvas');
+    const ovEl = $('tlOverview'), zmEl = $('tlZoom');
+    tlOvW = ovEl.clientWidth; tlOvH = ovEl.clientHeight;
+    tlZmW = zmEl.clientWidth; tlZmH = zmEl.clientHeight;
+    [ov].forEach(cv => { cv.width=tlOvW*DPR; cv.height=tlOvH*DPR;
+      cv.style.width=tlOvW+'px'; cv.style.height=tlOvH+'px';
+      cv.getContext('2d').scale(DPR,DPR); });
+    [zm].forEach(cv => { cv.width=tlZmW*DPR; cv.height=tlZmH*DPR;
+      cv.style.width=tlZmW+'px'; cv.style.height=tlZmH+'px';
+      cv.getContext('2d').scale(DPR,DPR); });
+    drawTimelineOverview();
+    drawTimelineZoom();
+    updateTimelineUI();
+    bindTimelineEvents();
+  }
+
+  function drawTimelineOverview() {
+    const cv = $('tlOvCanvas'); if(!cv) return;
+    const ctx = cv.getContext('2d');
+    const W = tlOvW, H = tlOvH;
+    ctx.clearRect(0,0,W,H);
+    if (!F.length) return;
+    // disegna velocità come fill colorato
+    const smax = Math.max(MAX(CH.speed),1);
+    const dec = decimate(CH.speed, W, 0, F.length);
+    const pts = dec.pts, n = pts.length;
+    // fill
+    ctx.beginPath();
+    let started = false;
+    for (let i=0;i<n;i++) {
+      if (pts[i]==null){started=false;continue;}
+      const x = i/(n-1)*W, y = H - (pts[i]/smax)*(H-2)-1;
+      if(!started){ctx.moveTo(x,H);ctx.lineTo(x,y);started=true;}
+      else ctx.lineTo(x,y);
+    }
+    ctx.lineTo(W,H); ctx.closePath();
+    const grad=ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'rgba(255,85,0,0.5)');
+    grad.addColorStop(1,'rgba(255,85,0,0.05)');
+    ctx.fillStyle=grad; ctx.fill();
+    // line
+    ctx.beginPath(); ctx.strokeStyle='#ff5500'; ctx.lineWidth=1; started=false;
+    for (let i=0;i<n;i++) {
+      if (pts[i]==null){started=false;continue;}
+      const x=i/(n-1)*W, y=H-(pts[i]/smax)*(H-2)-1;
+      if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // RPM in viola
+    const rmax = Math.max(MAX(CH.rpm),1);
+    const decR = decimate(CH.rpm, W, 0, F.length);
+    const ptsR = decR.pts, nR=ptsR.length;
+    ctx.beginPath(); ctx.strokeStyle='rgba(159,122,255,0.5)'; ctx.lineWidth=0.8; started=false;
+    for (let i=0;i<nR;i++) {
+      if (ptsR[i]==null){started=false;continue;}
+      const x=i/(nR-1)*W, y=H-(ptsR[i]/rmax)*(H-2)-1;
+      if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  function drawTimelineZoom() {
+    const cv = $('tlZmCanvas'); if(!cv) return;
+    const ctx = cv.getContext('2d');
+    const W = tlZmW, H = tlZmH;
+    ctx.clearRect(0,0,W,H);
+    if (!F.length) return;
+    const i0 = Math.floor(tlZoomStart*(F.length-1));
+    const i1 = Math.ceil(tlZoomEnd*(F.length-1))+1;
+    const smax = Math.max(MAX(CH.speed),1);
+    const dec = decimate(CH.speed, W, i0, Math.min(i1,F.length));
+    const pts = dec.pts, n = pts.length;
+    // fill velocità
+    ctx.beginPath(); let started=false;
+    for (let i=0;i<n;i++) {
+      if (pts[i]==null){started=false;continue;}
+      const x=i/(n-1)*W, y=H-(pts[i]/smax)*(H-2)-1;
+      if(!started){ctx.moveTo(x,H);ctx.lineTo(x,y);started=true;} else ctx.lineTo(x,y);
+    }
+    ctx.lineTo(W,H);ctx.closePath();
+    const grad=ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'rgba(255,85,0,0.35)');
+    grad.addColorStop(1,'rgba(255,85,0,0.03)');
+    ctx.fillStyle=grad; ctx.fill();
+    ctx.beginPath(); ctx.strokeStyle='#ff5500'; ctx.lineWidth=1.5; started=false;
+    for (let i=0;i<n;i++) {
+      if (pts[i]==null){started=false;continue;}
+      const x=i/(n-1)*W, y=H-(pts[i]/smax)*(H-2)-1;
+      if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // tacche temporali ogni ~30s
+    const dur = (tsMs(F[F.length-1])-tsMs(F[0]))/1000;
+    const winDur = (tlZoomEnd-tlZoomStart)*dur;
+    const step = winDur < 60 ? 10 : winDur < 300 ? 30 : 60;
+    const t0 = tlZoomStart*dur;
+    ctx.fillStyle='#3a3d52'; ctx.font=`8px 'IBM Plex Mono'`; ctx.textAlign='center';
+    for (let t=Math.ceil(t0/step)*step; t<tlZoomEnd*dur; t+=step) {
+      const x = (t-t0)/winDur*W;
+      ctx.fillStyle='rgba(255,255,255,0.06)';
+      ctx.fillRect(x,0,0.5,H);
+      ctx.fillStyle='#4a4d60';
+      const mm=Math.floor(t/60).toString().padStart(2,'0'), ss=Math.round(t%60).toString().padStart(2,'0');
+      ctx.fillText(mm+':'+ss, x, H-2);
+    }
+  }
+
+  function updateTimelineUI() {
+    if (!F.length) return;
+    // finestra zoom sull'overview
+    const wEl=$('tlWindow'), cEl=$('tlOvCursor'), zmCEl=$('tlZmCursor');
+    if(wEl){ wEl.style.left=(tlZoomStart*100)+'%'; wEl.style.width=((tlZoomEnd-tlZoomStart)*100)+'%'; }
+    // cursore sull'overview
+    if(cEl) cEl.style.left=(curPct*100)+'%';
+    // cursore nella zoom (mappato sulla finestra)
+    const winFrac = tlZoomEnd-tlZoomStart;
+    const zmPct = winFrac>0 ? Math.max(0,Math.min(1,(curPct-tlZoomStart)/winFrac)) : 0;
+    if(zmCEl) zmCEl.style.left=(zmPct*100)+'%';
+    // info finestra
+    const dur=(tsMs(F[F.length-1])-tsMs(F[0]))/1000;
+    const winSec=winFrac*dur;
+    const wi=$('tlWinInfo');
+    if(wi) wi.textContent='window: '+(winSec<60?winSec.toFixed(0)+'s':(winSec/60).toFixed(1)+'min');
+  }
+
+  function bindTimelineEvents() {
+    const ovEl=$('tlOverview'), zmEl=$('tlZoom');
+
+    function relX(e, el) {
+      const rect = el.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    }
+
+    let dragMode = null;
+    let panAnchorPct = 0, panAnchorWinStart = 0;
+
+    // ── Overview: drag sposta SOLO la finestra zoom, mai il cursore ──
+    function ovStart(e) {
+      dragMode = 'pan-window';
+      panAnchorPct = relX(e, ovEl);
+      panAnchorWinStart = tlZoomStart;
+    }
+
+    function ovMove(pct) {
+      if (dragMode !== 'pan-window') return;
+      const winSpan = tlZoomEnd - tlZoomStart;
+      const delta = pct - panAnchorPct;
+      tlZoomStart = Math.max(0, Math.min(1 - winSpan, panAnchorWinStart + delta));
+      tlZoomEnd = tlZoomStart + winSpan;
+      updateTimelineUI(); drawTimelineZoom(); drawBases();
+    }
+
+    ovEl.addEventListener('mousedown',  e => { e.preventDefault(); ovStart(e); });
+    ovEl.addEventListener('touchstart', e => { ovStart(e); }, { passive: true });
+
+    // ── Zoom strip: drag sposta SOLO il cursore ───────────────────
+    function zmStart(e) {
+      dragMode = 'cursor-zm';
+      const frac = relX(e, zmEl);
+      const pct = tlZoomStart + frac * (tlZoomEnd - tlZoomStart);
+      onScrub(pct); updateTimelineUI();
+    }
+
+    function zmMove(e) {
+      if (dragMode !== 'cursor-zm') return;
+      const frac = relX(e, zmEl);
+      const pct = tlZoomStart + frac * (tlZoomEnd - tlZoomStart);
+      onScrub(pct); updateTimelineUI();
+    }
+
+    zmEl.addEventListener('mousedown',  e => { e.preventDefault(); zmStart(e); });
+    zmEl.addEventListener('touchstart', e => { zmStart(e); }, { passive: true });
+
+    // ── Movimento globale ──────────────────────────────────────────
+    window.addEventListener('mousemove', e => {
+      if (!dragMode) return;
+      if (dragMode === 'pan-window') ovMove(relX(e, ovEl));
+      else if (dragMode === 'cursor-zm') zmMove(e);
+    });
+
+    window.addEventListener('touchmove', e => {
+      if (!dragMode) return;
+      if (dragMode === 'pan-window') ovMove(relX(e, ovEl));
+      else if (dragMode === 'cursor-zm') zmMove(e);
+    }, { passive: true });
+
+    window.addEventListener('mouseup',  () => { dragMode = null; });
+    window.addEventListener('touchend', () => { dragMode = null; });
+
+    // ── Scroll wheel overview: zoom ────────────────────────────────
+    ovEl.addEventListener('wheel', e => {
+      e.preventDefault();
+      const center = relX(e, ovEl);
+      const span = tlZoomEnd - tlZoomStart;
+      const factor = e.deltaY > 0 ? 1.15 : 0.87;
+      const newSpan = Math.max(0.02, Math.min(1, span * factor));
+      tlZoomStart = Math.max(0, center - (center - tlZoomStart) * (newSpan / span));
+      tlZoomEnd = tlZoomStart + newSpan;
+      if (tlZoomEnd > 1) { tlZoomEnd = 1; tlZoomStart = Math.max(0, 1 - newSpan); }
+      const zr=$('tlZoomRange'); if(zr) zr.value=Math.round(newSpan*100);
+      updateTimelineUI(); drawTimelineZoom(); drawBases();
+    }, { passive: false });
+
+    // ── Scroll wheel zoom strip: pan ───────────────────────────────
+    zmEl.addEventListener('wheel', e => {
+      e.preventDefault();
+      const winSpan = tlZoomEnd - tlZoomStart;
+      const delta = (e.deltaY > 0 ? 1 : -1) * winSpan * 0.15;
+      tlZoomStart = Math.max(0, Math.min(1 - winSpan, tlZoomStart + delta));
+      tlZoomEnd = tlZoomStart + winSpan;
+      updateTimelineUI(); drawTimelineZoom(); drawBases();
+    }, { passive: false });
+  }
+
+  function tlZoomSet(frac) {
+    const center=curPct, half=frac/2;
+    tlZoomStart=Math.max(0,center-half);
+    tlZoomEnd=Math.min(1,tlZoomStart+frac);
+    if(tlZoomEnd>1){tlZoomEnd=1;tlZoomStart=Math.max(0,1-frac);}
+    const zr=$('tlZoomRange'); if(zr) zr.value=Math.round(frac*100);
+    updateTimelineUI(); drawTimelineZoom(); drawBases();
+  }
+
+  function tlZoomSec(seconds) {
+    if (!F.length) return;
+    const dur = (tsMs(F[F.length-1]) - tsMs(F[0])) / 1000;
+    const frac = Math.min(1, seconds / Math.max(dur, 1));
+    tlZoomSet(frac);
+  }
+
+  function tlZoomSlider(v) { tlZoomSet(v/100); }
+
+  // ── primitives (con decimazione) ──────────────────────────────
   function yp(v, vmin, vmax, H) {
     const t = vmax===vmin ? 0.5 : Math.max(0,Math.min(1,(v-vmin)/(vmax-vmin)));
     return PAD + (1-t)*(H-PAD*2);
   }
 
+  // Ritorna i dati nel range zoom come array decimato, mappato su W pixel
+  function getZoomData(data) {
+    const n = F.length;
+    const i0 = Math.floor(tlZoomStart*(n-1));
+    const i1 = Math.min(n, Math.ceil(tlZoomEnd*(n-1))+1);
+    const W = 800; // stima conservativa, la decimazione è per canvas
+    return decimate(data, W, i0, i1).pts;
+  }
+
   function drawLine(ctx, data, W, H, vmin, vmax, color, lw) {
-    const n = data.length; if (n<2) return;
+    const pts = getZoomData(data);
+    const n = pts.length; if (n<2) return;
     ctx.beginPath();
     ctx.strokeStyle = color; ctx.lineWidth = lw||1.5;
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     let started = false;
     for (let i=0;i<n;i++) {
-      if (data[i] == null) { started = false; continue; }
-      const x = i/(n-1)*W, y = yp(data[i],vmin,vmax,H);
+      if (pts[i] == null) { started = false; continue; }
+      const x = i/(n-1)*W, y = yp(pts[i],vmin,vmax,H);
       if (!started) { ctx.moveTo(x,y); started = true; }
       else ctx.lineTo(x,y);
     }
@@ -756,9 +1442,9 @@
   }
 
   function drawFill(ctx, data, W, H, vmin, vmax, color) {
-    const n = data.length; if (n<2) return;
+    const pts = getZoomData(data);
+    const n = pts.length; if (n<2) return;
     const r=parseInt(color.slice(1,3),16), g=parseInt(color.slice(3,5),16), b=parseInt(color.slice(5,7),16);
-    // Disegna fill per ogni segmento continuo (skippa null)
     let segStart = -1;
     const flush = (end) => {
       if (segStart < 0) return;
@@ -772,8 +1458,8 @@
       segStart = -1;
     };
     for (let i=0;i<n;i++) {
-      if (data[i] == null) { flush(i); continue; }
-      const x = i/(n-1)*W, y = yp(data[i],vmin,vmax,H);
+      if (pts[i] == null) { flush(i); continue; }
+      const x = i/(n-1)*W, y = yp(pts[i],vmin,vmax,H);
       if (segStart < 0) { ctx.beginPath(); ctx.moveTo(x,y); segStart = i; }
       else ctx.lineTo(x,y);
     }
@@ -813,7 +1499,7 @@
   }
 
   // ── disegna basi ───────────────────────────────────────────────
-  function drawBases() { [0,1,2,3,4,5,6].forEach(drawBase); }
+  function drawBases() { [0,1,2,3,4,5,6,8].forEach(drawBase); }
 
   function drawBase(i) {
     if (!canvases[i]) return;
@@ -845,17 +1531,51 @@
         break;
       }
 
-      // 2: G-force + Giroscopio
+      // 2: G-Force — scala duale: g_lateral su asse sx, giroscopio su asse dx
       case 2: {
-        const all  = CH.glat.concat(CH.gfr).concat(CH.gyroX).concat(CH.gyroZ);
-        const gmin = Math.min(MIN(all),-0.01)*1.2;
-        const gmax = Math.max(MAX(all), 0.01)*1.2;
+        // asse sx: g laterale (piccolo, ±1g tipicamente)
+        const glatV = CH.glat.filter(v=>v!=null);
+        const glatAbs = Math.max(MAX(glatV.map(Math.abs)),0.1);
+        const gmin = -glatAbs*1.3, gmax = glatAbs*1.3;
+
+        // asse dx: giroscopio (rad/s, scala più grande)
+        const gyroAll = CH.gyroX.concat(CH.gyroY).concat(CH.gyroZ).filter(v=>v!=null);
+        const gyroAbs = Math.max(MAX(gyroAll.map(Math.abs)),0.1);
+        const gyrMin = -gyroAbs*1.2, gyrMax = gyroAbs*1.2;
+
         drawGrid(ctx,W,H,gmin,gmax,4);
         drawZero(ctx,W,H,gmin,gmax);
-        if (on('glat'))  { drawFill(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0'); drawLine(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0',2); }
-        if (on('gfr'))   { drawLine(ctx,CH.gfr,W,H,gmin,gmax,'#f0c040',1.5); }
-        if (on('gyroX')) { drawLine(ctx,CH.gyroX,W,H,gmin,gmax,'#00d47a',1.5); }
-        if (on('gyroZ')) { drawLine(ctx,CH.gyroZ,W,H,gmin,gmax,'#ff3348',1.5); }
+
+        // g laterale — scala sx, linea spessa colorata
+        if (on('glat')) {
+          drawFill(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0');
+          drawLine(ctx,CH.glat,W,H,gmin,gmax,'#00c8e0',2.5);
+        }
+
+        // giroscopio — scala dx (rimappata sulla stessa altezza canvas)
+        function drawGyro(data, color, key) {
+          if (!on(i, key)) return;
+          const pts = getZoomData(data);
+          const n = pts.length; if(n<2) return;
+          ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=1;
+          ctx.lineJoin='round'; ctx.lineCap='round';
+          let started=false;
+          for(let j=0;j<n;j++){
+            if(pts[j]==null){started=false;continue;}
+            const x=j/(n-1)*W, y=yp(pts[j],gyrMin,gyrMax,H);
+            if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+          }
+          ctx.stroke();
+        }
+        drawGyro(CH.gfr,   '#f0c040', 'gfr');
+        drawGyro(CH.gyroX, '#00d47a', 'gyroX');
+        drawGyro(CH.gyroZ, '#ff3348', 'gyroZ');
+
+        // etichetta scala dx
+        ctx.font=`8px 'IBM Plex Mono'`; ctx.fillStyle='#4a4d60'; ctx.textAlign='right';
+        ctx.fillText(gyrMax.toFixed(1), W-3, PAD+8);
+        ctx.fillText(gyrMin.toFixed(1), W-3, H-PAD-2);
+        ctx.textAlign='left';
         break;
       }
 
@@ -872,7 +1592,7 @@
         const allTPMS = pv.concat(tv);
         if (allTPMS.length < 2) {
           ctx.fillStyle='#52556a'; ctx.font="11px 'IBM Plex Mono'";
-          ctx.fillText('dati TPMS non disponibili', 8, H/2); break;
+          ctx.fillText('no TPMS data available', 8, H/2); break;
         }
         // scala unica: tutto su 0-max visivo, pressure in bar (1.5-3), temp in °C (15-50)
         // usiamo due scale separate: pressione sulla griglia sx, temp scalata sulla stessa area
@@ -907,16 +1627,42 @@
         break;
       }
 
-      // 5: Gestione motore — MAP + Anticipo + Fuel Trim (tutto scaled su 0-mapMax)
+      // 5: Gestione motore — MAP su asse sx, anticipo+trim su asse dx separato
       case 5: {
-        const mapMax  = Math.max(MAX(CH.map),10);
-        const ignMin  = MIN(CH.ign), ignMax = MAX(CH.ign);
-        const trimMin = Math.min(MIN(CH.trim),-5)*1.1, trimMax = Math.max(MAX(CH.trim),5)*1.1;
+        const mapV2 = CH.map.filter(v=>v>0);
+        const mapMax = Math.max(mapV2.length?MAX(mapV2):10, 10);
+        const ignV = CH.ign.filter(v=>v!=null);
+        const ignMax = Math.max(ignV.length?MAX(ignV):40, 40);
+        const trimV = CH.trim.filter(v=>v!=null);
+        const trimAbs = Math.max(trimV.length?MAX(trimV.map(Math.abs)):10, 5);
+
         drawGrid(ctx,W,H,0,mapMax,4);
-        drawZero(ctx,W,H,-1,mapMax); // linea zero per trim
+
         if (on('map'))  { drawFill(ctx,CH.map,W,H,0,mapMax,'#00d47a'); drawLine(ctx,CH.map,W,H,0,mapMax,'#00d47a',2); }
-        if (on('ign'))  { drawLine(ctx, scaleToRange(CH.ign,ignMin,ignMax,0,mapMax),  W,H,0,mapMax,'#9f7aff',1.5); }
-        if (on('trim')) { drawLine(ctx, scaleToRange(CH.trim,trimMin,trimMax,0,mapMax), W,H,0,mapMax,'#00c8e0',1.5); }
+
+        // anticipo: scala 0-ignMax rimappata su 0-mapMax
+        if (on('ign')) {
+          const ignScaled = scaleToRange(CH.ign,0,ignMax,0,mapMax);
+          drawLine(ctx,ignScaled,W,H,0,mapMax,'#9f7aff',1.5);
+        }
+
+        // fuel trim: scala ±trimAbs rimappata su 0-mapMax (zero al 50%)
+        if (on('trim')) {
+          const trimScaled = scaleToRange(CH.trim,-trimAbs,trimAbs,0,mapMax);
+          drawLine(ctx,trimScaled,W,H,0,mapMax,'#00c8e0',1.2);
+          // linea zero trim
+          const yz = yp(mapMax/2,0,mapMax,H);
+          ctx.beginPath(); ctx.moveTo(0,yz); ctx.lineTo(W,yz);
+          ctx.strokeStyle='rgba(0,200,224,0.2)'; ctx.lineWidth=0.5;
+          ctx.setLineDash([3,5]); ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        // etichette scale dx
+        ctx.font=`8px 'IBM Plex Mono'`; ctx.fillStyle='#9f7aff'; ctx.textAlign='right';
+        ctx.fillText(ignMax+'°', W-3, PAD+8);
+        ctx.fillStyle='#00c8e0';
+        ctx.fillText('+'+trimAbs+'%', W-3, PAD+18);
+        ctx.textAlign='left';
         break;
       }
 
@@ -927,21 +1673,53 @@
         if (on('fuel')) { drawFill(ctx,CH.fuel,W,H,0,fmax,'#ff8800'); drawLine(ctx,CH.fuel,W,H,0,fmax,'#ff8800',2); }
         break;
       }
+
+      // 8: Lean angle + Marcia
+      case 8: {
+        const leanMin = Math.min(MIN(CH.lean), -5) * 1.1;
+        const leanMax = Math.max(MAX(CH.lean),  5) * 1.1;
+        const gearMax = 6;
+        drawGrid(ctx,W,H,leanMin,leanMax,4);
+        drawZero(ctx,W,H,leanMin,leanMax);
+        if (on('lean')) { drawFill(ctx,CH.lean,W,H,leanMin,leanMax,'#f0c040'); drawLine(ctx,CH.lean,W,H,leanMin,leanMax,'#f0c040',2); }
+        if (on('gear')) {
+          // marcia scalata sullo stesso asse del lean per sovrapposizione
+          const gScaled = CH.gear.map(v => v === 0 ? null : leanMin + (v/gearMax)*(leanMax-leanMin));
+          // disegna come step chart
+          ctx.beginPath(); ctx.strokeStyle='var(--or)'; ctx.lineWidth=2;
+          let started = false;
+          for (let i=0;i<gScaled.length;i++) {
+            if (gScaled[i]==null){started=false;continue;}
+            const x=i/(gScaled.length-1)*W, y=yp(gScaled[i],leanMin,leanMax,H);
+            if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+          }
+          ctx.stroke();
+        }
+        break;
+      }
     }
   }
 
   // ── cursore overlay ────────────────────────────────────────────
   function drawCursors(pct) {
-    [0,1,2,3,4,5,6].forEach(i => {
+    // posizione del cursore nella finestra zoom [0..1]
+    const winSpan = tlZoomEnd - tlZoomStart;
+    const zmPct = winSpan > 0 ? Math.max(0, Math.min(1, (pct - tlZoomStart) / winSpan)) : 0;
+    const inWindow = pct >= tlZoomStart && pct <= tlZoomEnd;
+
+    [0,1,2,3,4,5,6,8].forEach(i => {
       if (!canvases[i]) return;
       const {over,W,H} = canvases[i];
       const ctx = over.getContext('2d');
       ctx.clearRect(0,0,W,H);
-      const x = pct*W;
+      if (!inWindow) return; // cursore fuori dalla finestra: non mostrare
+      const x = zmPct*W;
       ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H);
-      ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1;
+      ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1;
       ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
     });
+
+    if (!inWindow) return;
 
     function dot(panelIdx, series, vmin, vmax, color, key) {
       if (!canvases[panelIdx] || (key && !isOn(panelIdx, key))) return;
@@ -949,7 +1727,7 @@
       const ctx = over.getContext('2d');
       const idx = Math.min(series.length-1, Math.round(pct*(series.length-1)));
       const v = series[idx]; if (v==null) return;
-      const x = pct*W, y = yp(v,vmin,vmax,H);
+      const x = zmPct*W, y = yp(v,vmin,vmax,H);
       ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
       ctx.fillStyle=color; ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
@@ -963,12 +1741,16 @@
     dot(1, accelV, 0, 100, '#00c8e0', 'accel');
     dot(1, CH.tps,  0, 100, '#00d47a', 'tps');
 
-    const all  = CH.glat.concat(CH.gfr).concat(CH.gyroX).concat(CH.gyroZ);
-    const gmin = Math.min(MIN(all),-0.01)*1.2, gmax = Math.max(MAX(all),0.01)*1.2;
-    dot(2, CH.glat,  gmin, gmax, '#00c8e0', 'glat');
-    dot(2, CH.gfr,   gmin, gmax, '#f0c040', 'gfr');
-    dot(2, CH.gyroX, gmin, gmax, '#00d47a', 'gyroX');
-    dot(2, CH.gyroZ, gmin, gmax, '#ff3348', 'gyroZ');
+    const glatV2 = CH.glat.filter(v=>v!=null);
+    const glatAbs2 = Math.max(MAX(glatV2.map(Math.abs)),0.1);
+    const gmin2 = -glatAbs2*1.3, gmax2 = glatAbs2*1.3;
+    const gyroAll2 = CH.gyroX.concat(CH.gyroY).concat(CH.gyroZ).filter(v=>v!=null);
+    const gyroAbs2 = Math.max(MAX(gyroAll2.map(Math.abs)),0.1);
+    const gyrMin2 = -gyroAbs2*1.2, gyrMax2 = gyroAbs2*1.2;
+    dot(2, CH.glat,  gmin2, gmax2, '#00c8e0', 'glat');
+    dot(2, CH.gfr,   gyrMin2, gyrMax2, '#f0c040', 'gfr');
+    dot(2, CH.gyroX, gyrMin2, gyrMax2, '#00d47a', 'gyroX');
+    dot(2, CH.gyroZ, gyrMin2, gyrMax2, '#ff3348', 'gyroZ');
 
     const pAll = CH.pant.concat(CH.ppost).filter(v=>v!=null);
     if (pAll.length>=2) {
@@ -989,6 +1771,124 @@
 
     const fmax = Math.max(MAX(CH.fuel),2)*1.05;
     dot(6, CH.fuel, 0, fmax, '#ff8800', 'fuel');
+
+    // panel 8: lean + gear
+    if (CH.lean && CH.lean.length) {
+      const leanMin = Math.min(MIN(CH.lean),-5)*1.1;
+      const leanMax = Math.max(MAX(CH.lean), 5)*1.1;
+      dot(8, CH.lean, leanMin, leanMax, '#f0c040', 'lean');
+      if (CH.gear) {
+        const gScaled = CH.gear.map(v => v===0 ? null : leanMin + (v/6)*(leanMax-leanMin));
+        dot(8, gScaled, leanMin, leanMax, '#ff5500', 'gear');
+      }
+    }
+  }
+
+  // ── Lean angle gauge SVG ─────────────────────────────────────
+  function initLeanGauge() {
+    const svg = document.getElementById('leanSvg');
+    if (!svg) return;
+    const cx=100, cy=100, r=78;
+    // tacche ogni 10° da -60 a +60
+    const tg = document.getElementById('lgTicks');
+    tg.innerHTML = '';
+    for (let a=-60;a<=60;a+=10) {
+      const rad = (180 - a) * Math.PI / 180; // 0° = top
+      const isMaj = a%30===0;
+      const r0 = r - (isMaj?10:5), r1 = r;
+      const x0 = cx + r0*Math.cos(rad-Math.PI/2+Math.PI);
+      const y0 = cy + r0*Math.sin(rad-Math.PI/2+Math.PI);
+      const x1 = cx + r1*Math.cos(rad-Math.PI/2+Math.PI);
+      const y1 = cy + r1*Math.sin(rad-Math.PI/2+Math.PI);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',x0); line.setAttribute('y1',y0);
+      line.setAttribute('x2',x1); line.setAttribute('y2',y1);
+      line.setAttribute('stroke', isMaj?'#52556a':'#2a2d3a');
+      line.setAttribute('stroke-width', isMaj?'1.5':'0.8');
+      tg.appendChild(line);
+    }
+    // archi sfondo (da -60 a 0 = sinistra, da 0 a +60 = destra)
+    function arcPath(fromDeg, toDeg) {
+      // -60..+60 mappati su 120°..240° del cerchio (0° = right, 90° = bottom)
+      // lean 0° = agone punta su, lean +60° = punta destra, lean -60° = punta sinistra
+      // angolo SVG: 0° lean → 270° (top), lean ±60° → ±60° da 270
+      const a1 = (270 + fromDeg) * Math.PI/180;
+      const a2 = (270 + toDeg)   * Math.PI/180;
+      const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+      const x2 = cx + r*Math.cos(a2), y2 = cy + r*Math.sin(a2);
+      const large = Math.abs(toDeg-fromDeg)>180?1:0;
+      return `M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2}`;
+    }
+    document.getElementById('lgArcBgL').setAttribute('d', arcPath(-60, 0));
+    document.getElementById('lgArcBgR').setAttribute('d', arcPath(0, 60));
+  }
+
+  function updateLeanGauge(leanDeg) {
+    const clamp = Math.max(-60, Math.min(60, leanDeg));
+    // ago: ruota intorno al centro (100,100), punta verso l'alto a 0°
+    const needleAngle = clamp; // gradi: 0=verticale, + = destra, - = sinistra
+    const rad = (270 + needleAngle) * Math.PI/180;
+    const len = 72;
+    const x2 = 100 + len*Math.cos(rad);
+    const y2 = 100 + len*Math.sin(rad);
+    const needle = document.getElementById('lgNeedle');
+    if (needle) { needle.setAttribute('x2', x2.toFixed(1)); needle.setAttribute('y2', y2.toFixed(1)); }
+
+    // arco attivo
+    function arcPath(fromDeg, toDeg) {
+      const r=78, cx=100, cy=100;
+      const a1 = (270 + fromDeg)*Math.PI/180;
+      const a2 = (270 + toDeg)  *Math.PI/180;
+      const x1 = cx+r*Math.cos(a1), y1 = cy+r*Math.sin(a1);
+      const x2 = cx+r*Math.cos(a2), y2 = cy+r*Math.sin(a2);
+      const large = Math.abs(toDeg-fromDeg)>180?1:0;
+      const sweep = toDeg>fromDeg?1:0;
+      return `M${x1},${y1} A${r},${r} 0 ${large},${sweep} ${x2},${y2}`;
+    }
+    const arcR = document.getElementById('lgArcR');
+    const arcL = document.getElementById('lgArcL');
+    if (clamp >= 0) {
+      arcR.setAttribute('d', arcPath(0, clamp));
+      arcR.setAttribute('stroke','#00d47a');
+      arcL.setAttribute('d','');
+    } else {
+      arcL.setAttribute('d', arcPath(clamp, 0));
+      arcL.setAttribute('stroke','#00c8e0');
+      arcR.setAttribute('d','');
+    }
+    // colore ago in base all'angolo
+    const absL = Math.abs(clamp);
+    const needleColor = absL < 20 ? '#f0c040' : absL < 40 ? '#ff8800' : '#ff3348';
+    if (needle) needle.setAttribute('stroke', needleColor);
+
+    const valEl = document.getElementById('lgVal');
+    if (valEl) {
+      valEl.textContent = clamp.toFixed(1)+'°';
+      valEl.setAttribute('fill', needleColor);
+    }
+  }
+
+  // ── Gear indicator readout ────────────────────────────────────
+  const GEAR_COLORS = ['','#00d47a','#00d47a','#f0c040','#f0c040','#ff8800','#ff3348'];
+
+  function updateGearReadout(gearIdx) {
+    const gEl = document.getElementById('gearNum');
+    const sEl = document.getElementById('gearRatio');
+    const swEl = document.getElementById('legcGear'); // toggle swatch
+    if (!gEl) return;
+    if (gearIdx === 0) {
+      gEl.textContent = 'N';
+      gEl.style.color = 'var(--dim)';
+      if (sEl) sEl.textContent = 'neutral / unknown';
+      if (swEl) swEl.style.background = 'var(--dim)';
+    } else {
+      gEl.textContent = gearIdx;
+      const col = GEAR_COLORS[gearIdx] || 'var(--or)';
+      gEl.style.color = col;
+      if (sEl) sEl.textContent = gearIdx + (gearIdx===1?'st':gearIdx===2?'nd':gearIdx===3?'rd':'th') + ' gear';
+      // sync toggle swatch
+      if (swEl) swEl.style.background = col;
+    }
   }
 
   // ── readouts al cursore ────────────────────────────────────────
@@ -1019,6 +1919,31 @@
     // GPS + altitudine
     const altNow = CH.alt[idx];
     
+    // Lean angle + gauge
+    if (CH.lean) {
+      const lv = CH.lean[idx] || 0;
+      const cLean = document.getElementById('cLean');
+      if (cLean) cLean.textContent = lv.toFixed(1);
+      updateLeanGauge(lv);
+    }
+
+    // Gear indicator
+    if (CH.gear) {
+      updateGearReadout(CH.gear[idx] || 0);
+    }
+
+    // HUD bar
+    const hudSpd  = document.getElementById('hudSpd');
+    const hudRpm  = document.getElementById('hudRpm');
+    const hudGear = document.getElementById('hudGear');
+    if (hudSpd)  hudSpd.textContent  = fi(CH.speed[idx] || 0);
+    if (hudRpm)  hudRpm.textContent  = fi(CH.rpm[idx]   || 0);
+    if (hudGear && CH.gear) {
+      const g = CH.gear[idx] || 0;
+      hudGear.textContent = g === 0 ? 'N' : g;
+      const GEAR_COLORS = ['','#00d47a','#00d47a','#f0c040','#f0c040','#ff8800','#ff3348'];
+      hudGear.style.color = g === 0 ? 'var(--dim)' : (GEAR_COLORS[g] || 'var(--or)');
+    }
 
     updateMapCursor(idx);
 
@@ -1033,6 +1958,7 @@
     curPct = pct;
     drawCursors(pct);
     updateReadouts(pct);
+    updateTimelineUI();
   }
 
   // Trova la percentuale del primo frame con dati OBD validi
@@ -1052,6 +1978,7 @@
     rtimer = setTimeout(() => {
       if (!F.length) return;
       initCanvases(); drawBases(); drawCursors(curPct);
+      initTimeline();
     }, 150);
   });
 
@@ -1126,6 +2053,22 @@
       milEl.innerHTML = `<span class="mil-on">MIL ON</span> <span style="color:var(--re)">${dtcMax} DTC</span>`;
     } else {
       milEl.innerHTML = `<span class="mil-off">OK</span>`;
+    }
+
+    // Lean angle stats
+    if (CH.lean) {
+      const leanR  = MAX(CH.lean);
+      const leanL  = Math.abs(MIN(CH.lean));
+      const leanA  = avg(CH.lean.map(Math.abs));
+      const leanP  = CH.lean.filter(v=>Math.abs(v)>5).length / CH.lean.length * 100;
+      const lMaxR  = document.getElementById('leanMaxR');
+      const lMaxL  = document.getElementById('leanMaxL');
+      const lAvg   = document.getElementById('leanAvg');
+      const lPct   = document.getElementById('leanPct');
+      if (lMaxR) lMaxR.textContent = leanR.toFixed(1)+'°';
+      if (lMaxL) lMaxL.textContent = leanL.toFixed(1)+'°';
+      if (lAvg)  lAvg.textContent  = leanA.toFixed(1)+'°';
+      if (lPct)  lPct.textContent  = leanP.toFixed(0)+'%';
     }
   }
 
