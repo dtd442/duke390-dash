@@ -53,28 +53,26 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:keepScreenOn="true"
-            android:screenOrientation="portrait"
-            android:launchMode="singleInstance"
-            android:windowSoftInputMode="stateHidden|adjustNothing"
-            android:theme="@style/Theme.Duke390Dash.NoAnimation"
-            android:excludeFromRecents="true"
-            android:resizeableActivity="false">
-            <!--
-                HOME intent filter sulla MainActivity (non SplashActivity) —
-                così Android sa che è questa la home vera e gestisce correttamente
-                i gesti di navigazione senza aprire il task switcher sopra di essa.
-            -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:keepScreenOn="true"
+            android:screenOrientation="portrait"
+            android:launchMode="singleInstance"
+            android:windowSoftInputMode="stateHidden|adjustNothing"
+            android:theme="@style/Theme.Duke390Dash.NoAnimation">
+            <!--
+                layoutInDisplayCutoutMode="shortEdges": il contenuto si estende
+                sotto il notch/punch-hole anche in landscape — evita bande nere
+                e rende il fullscreen davvero totale su tutti i dispositivi.
+            -->
             <meta-data
                 android:name="android.notch_support"
                 android:value="true"/>
@@ -82,6 +80,13 @@
 
         <activity
             android:name=".AnalyzerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="stateHidden"
+            android:theme="@style/Theme.Duke390Dash.NoAnimation"/>
+
+        <activity
+            android:name=".PermissionActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="stateHidden"

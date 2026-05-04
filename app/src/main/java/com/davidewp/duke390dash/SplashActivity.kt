@@ -1,17 +1,22 @@
 package com.davidewp.duke390dash
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.view.WindowManager
 import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -62,6 +67,14 @@ class SplashActivity : AppCompatActivity() {
         layout!!.addView(waitText)
         setContentView(layout)
 
+        // ── Controlla permessi prima di procedere ─────────────────────────────
+        // Se manca qualcosa → PermissionActivity (solo se non li abbiamo già mostrati)
+        if (!allPermissionsGranted()) {
+            startActivity(Intent(this, PermissionActivity::class.java))
+            finish()
+            return
+        }
+
         val prefs = getSharedPreferences(DashViewModel.PREFS_NAME, Context.MODE_PRIVATE)
         val motoMode = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
 
@@ -73,6 +86,29 @@ class SplashActivity : AppCompatActivity() {
             }
         } else {
             if (splashShown) startMainActivity() else playIntro()
+        }
+    }
+
+    // ── Permission check ──────────────────────────────────────────────────────
+    // Controlla solo i permessi obbligatori (notifiche, BT, location fine).
+    // Background location e batteria sono opzionali — skip disponibile in
+    // PermissionActivity — quindi non bloccano qui.
+
+    private fun allPermissionsGranted(): Boolean {
+        val required = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            required += listOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            required += Manifest.permission.POST_NOTIFICATIONS
+        }
+        return required.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
     }
 
@@ -95,7 +131,6 @@ class SplashActivity : AppCompatActivity() {
         }
         registerReceiver(powerReceiver, IntentFilter(Intent.ACTION_POWER_CONNECTED))
 
-        // Long press 3 secondi per bypass modalità moto
         var pressHandler: Handler? = null
         var pressRunnable: Runnable? = null
 
@@ -141,14 +176,12 @@ class SplashActivity : AppCompatActivity() {
 
         videoView.setOnPreparedListener { mediaPlayer ->
             val duration = mediaPlayer.duration
-            // Preload: lancia MainActivity 800ms prima della fine del video
             val preloadAt = (duration - 800).toLong().coerceAtLeast(0)
             Handler(Looper.getMainLooper()).postDelayed({
                 startMainActivityOnce()
             }, preloadAt)
         }
 
-        // Fallback: se onPrepared non scatta o il video è cortissimo
         videoView.setOnCompletionListener { startMainActivityOnce() }
         videoView.setOnErrorListener { _, _, _ -> startMainActivityOnce(); true }
         videoView.start()
@@ -161,7 +194,6 @@ class SplashActivity : AppCompatActivity() {
         finish()
     }
 
-    // startMainActivity rimane per i casi senza video (splashShown già true)
     private fun startMainActivity() = startMainActivityOnce()
 
     override fun onDestroy() {

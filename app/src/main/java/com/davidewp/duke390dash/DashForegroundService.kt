@@ -102,15 +102,8 @@ class DashForegroundService : Service() {
     @Volatile private var lastGyroX:    Float = 0f
     @Volatile private var lastGyroY:    Float = 0f
     @Volatile private var lastGyroZ:    Float = 0f
-
-    // Valori IMU grezzi (senza dead-band) — solo per la calibrazione
-    // La dead-band azzera componenti piccole e corrompe il vettore gravità
-    @Volatile private var rawGX:    Float = 0f
-    @Volatile private var rawGY:    Float = 0f
-    @Volatile private var rawGZ:    Float = 0f
-    @Volatile private var rawGyroX: Float = 0f
-    @Volatile private var rawGyroY: Float = 0f
-    @Volatile private var rawGyroZ: Float = 0f
+    // I valori senza dead-band per la calibrazione vengono letti
+    // direttamente da gSensor.calibGX/Y/Z al momento del tick
 
     // ── Stato macchina a stati calibrazione ───────────────────────────────────
     private var calibPhase       = CalibState.IDLE
@@ -162,8 +155,11 @@ class DashForegroundService : Service() {
         speedKmh: Float
     ) {
         val accelMag = sqrt(gx*gx + gy*gy + gz*gz)
-        // Usa il giroscopio grezzo per la magnitudine — più preciso
-        val gyroMag  = sqrt(rawGyroX*rawGyroX + rawGyroY*rawGyroY + rawGyroZ*rawGyroZ)
+        val gyroMag  = sqrt(
+            gSensor.calibGyroX * gSensor.calibGyroX +
+                    gSensor.calibGyroY * gSensor.calibGyroY +
+                    gSensor.calibGyroZ * gSensor.calibGyroZ
+        )
 
         when (calibPhase) {
 
@@ -337,15 +333,6 @@ class DashForegroundService : Service() {
             lastGyroX    = gyroX
             lastGyroY    = gyroY
             lastGyroZ    = gyroZ
-            // Valori grezzi → calibrazione (gVert qui è già senza sottrazione 1g)
-            // Usiamo i valori filtrati low-pass ma senza dead-band
-            // Nota: MotionSensor ci passa gVert grezzo (include ~1g di gravità)
-            rawGX    = gLateral  // gLateral ha solo dead-band, non sottrae gravità
-            rawGY    = gLong     // idem
-            rawGZ    = gVert     // gVert ora è grezzo (vedi MotionSensor fix)
-            rawGyroX = gyroX
-            rawGyroY = gyroY
-            rawGyroZ = gyroZ
             // UI: usa il valore calibrato se disponibile
             val (calLat, _, _) = applyRotation(gLateral, gLong, gVert)
             _gLateral.value = if (calibPhase == CalibState.DONE) calLat else gLateral
@@ -381,15 +368,23 @@ class DashForegroundService : Service() {
                 val speedKmh     = currentState.obd.speedKmh
 
                 if (sessionLogger.isLogging) {
-                    // Calibrazione usa i valori GREZZI (senza dead-band)
-                    // così il vettore gravità è completo e la mag ≈ 1g quando fermo
-                    updateCalib(rawGX, rawGY, rawGZ, speedKmh)
+                    // Calibrazione legge direttamente i valori filtrati senza dead-band
+                    // dal sensore — più precisi dei valori copiati nel callback
+                    updateCalib(
+                        gSensor.calibGX, gSensor.calibGY, gSensor.calibGZ,
+                        speedKmh
+                    )
 
                     // Applica rotazione se calibrazione completata
-                    val (calLat, calLong, calVert) = if (calibPhase == CalibState.DONE)
+                    val (calLat, calLong, calVertRaw) = if (calibPhase == CalibState.DONE)
                         applyRotation(lastGLateral, lastGLong, lastGVert)
                     else
                         Triple(lastGLateral, lastGLong, lastGVert)
+
+                    // gVert nel JSON = scostamento da piano (0=piano, +dosso, -buca)
+                    // Dopo la rotazione calVertRaw ≈ 1g in piano → sottraiamo 1g
+                    // Prima della calibrazione il valore è grezzo e non significativo
+                    val calVert = if (calibPhase == CalibState.DONE) calVertRaw - 1f else calVertRaw
 
                     val (calGyroX, calGyroY, calGyroZ) = if (calibPhase == CalibState.DONE)
                         applyRotation(lastGyroX, lastGyroY, lastGyroZ)
