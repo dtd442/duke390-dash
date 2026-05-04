@@ -47,13 +47,22 @@
              #333333 = off (grigio scuro)
              #FF3300 = on  (rosso) -->
         <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="REC"
+            android:textSize="9sp"
+            android:textColor="#52556A"
+            android:textStyle="bold"
+            android:paddingEnd="2dp"
+            android:letterSpacing="0.05"/>
+        <TextView
             android:id="@+id/dotRecording"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="●"
             android:textSize="11sp"
             android:textColor="#333333"
-            android:paddingEnd="5dp"
+            android:paddingEnd="10dp"
             android:contentDescription="Recording status"/>
 
         <!-- ● Calibrazione IMU
@@ -61,6 +70,15 @@
              #EF9F27 = in corso            (arancio)
              #00CC44 = completata OK       (verde)
              #FF3300 = fallita / timeout   (rosso) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CAL"
+            android:textSize="9sp"
+            android:textColor="#52556A"
+            android:textStyle="bold"
+            android:paddingEnd="2dp"
+            android:letterSpacing="0.05"/>
         <TextView
             android:id="@+id/dotCalib"
             android:layout_width="wrap_content"
