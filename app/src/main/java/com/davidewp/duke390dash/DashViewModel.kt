@@ -21,7 +21,6 @@ class DashViewModel : ViewModel() {
     val dashState: StateFlow<DashState>          = DashForegroundService.dashState
     val gLateral:  StateFlow<Float>              = DashForegroundService.gLateralFlow
     val gpsState:  StateFlow<GpsManager.GpsData> = DashForegroundService.gpsState
-
     
     fun saveSettings(
         context: Context,
