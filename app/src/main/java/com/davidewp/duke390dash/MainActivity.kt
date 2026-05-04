@@ -41,13 +41,27 @@ class MainActivity : AppCompatActivity() {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-            dashService  = (binder as DashForegroundService.LocalBinder).getService()
+            val binderService = (binder as DashForegroundService.LocalBinder).getService()
+            dashService = binderService
             serviceBound = true
+
+            // --- SINCRONIZZAZIONE INTELLIGENTE ---
+            if (binderService.isLogging()) {
+                // Se il servizio sta già registrando, nascondi l'overlay START
+                binding.overlayStart.visibility = android.view.View.GONE
+                updateRecordingDot(true) // Accendi il pallino rosso REC sulla dashboard
+            } else {
+                // Se il servizio è in attesa, mostra l'overlay per iniziare
+                binding.overlayStart.visibility = android.view.View.VISIBLE
+                updateRecordingDot(false)
+            }
+
             notifyTile()
         }
+
         override fun onServiceDisconnected(name: ComponentName) {
-            dashService  = null
             serviceBound = false
+            dashService = null
         }
     }
 
@@ -137,7 +151,21 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+// Inserisci questo nel onCreate della tua MainActivity dopo setContentView
+        binding.btnStartOverlay.setOnClickListener {
+            if (serviceBound) { // <--- Usiamo il tuo "serviceBound"
+                dashService?.startLogging()
 
+                // Aggiorna il pallino rosso (REC) sulla UI
+                updateRecordingDot(true)
+
+                // Nasconde l'overlay per mostrare la dashboard
+                binding.overlayStart.visibility = android.view.View.GONE
+
+                // Notifica il Tile di sistema che stiamo registrando
+                notifyTile()
+            }
+        }
         AppLog.add("MainActivity", "App avviata")
         initNa()
 
@@ -486,14 +514,30 @@ class MainActivity : AppCompatActivity() {
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     override fun onDestroy() {
-        super.onDestroy()
         longPressHandler.removeCallbacks(longPressRunnable)
-        if (serviceBound) { unbindService(serviceConnection); serviceBound = false }
+
+        // Se il servizio è connesso, facciamo pulizia prima di chiudere
+        if (serviceBound) {
+            // Se NON stiamo registrando, fermiamo il servizio del tutto
+            if (dashService?.isLogging() != true) {
+                DashForegroundService.stop(this)
+                DashTileService.updateTile(this, running = false, logging = false)
+            } else {
+                // Se invece stiamo registrando, aggiorniamo solo il Tile
+                DashTileService.updateTile(this, running = true, logging = true)
+            }
+
+            unbindService(serviceConnection)
+            serviceBound = false
+        }
+
         AppLog.close()
-        DashTileService.updateTile(this, running = true, logging = dashService?.isLogging() == true)
+        super.onDestroy()
+
+        // Se l'app viene chiusa e non c'è una registrazione attiva,
+        // uccidiamo il processo per pulire la RAM al 100%
         if (dashService?.isLogging() != true) {
-            DashTileService.updateTile(this, running = false, logging = false)
-            DashForegroundService.stop(this)
+            android.os.Process.killProcess(android.os.Process.myPid())
         }
     }
 
@@ -576,9 +620,18 @@ class MainActivity : AppCompatActivity() {
         }
         dialogView.findViewById<android.widget.Button>(R.id.btnExit).setOnClickListener {
             dialog.dismiss()
+
+            // Reset della memoria sensori prima di spegnere
+            dashService?.resetCalib()
+
+            // Stop fisico al servizio (notifica e sensori)
             DashForegroundService.stop(this)
+
             SplashActivity.splashShown = false
             finishAffinity()
+
+            // Colpo di grazia: elimina il processo e svuota la RAM
+            android.os.Process.killProcess(android.os.Process.myPid())
         }
         dialogView.findViewById<android.widget.Button>(R.id.btnCancel).setOnClickListener {
             dialog.dismiss()
