@@ -64,7 +64,7 @@ class DashForegroundService : Service() {
     private lateinit var tpmsManager:   TpmsManager
     private lateinit var obdManager:    ObdManager
     private lateinit var gpsManager:    GpsManager
-    private lateinit var gSensor:       GSensor
+    private lateinit var gSensor:       MotionSensor
     private lateinit var sessionLogger: SessionLogger
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -102,7 +102,7 @@ class DashForegroundService : Service() {
         obdManager.start()
         gpsManager.start()
 
-        gSensor = GSensor(this) { gLateral, gLong, gVert, gyroX, gyroY, gyroZ ->
+        gSensor = MotionSensor(this) { gLateral, gLong, gVert, gyroX, gyroY, gyroZ ->
             lastGLateral    = gLateral
             lastGLong       = gLong    // ← nuovo
             lastGVert       = gVert    // ← nuovo
