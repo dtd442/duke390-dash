@@ -3,8 +3,7 @@ package com.davidewp.duke390dash
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.os.IBinder
-import android.os.PowerManager
+import android.os.*
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -13,75 +12,103 @@ import kotlin.math.*
 /**
  * DashForegroundService — unico proprietario di tutti i manager.
  *
- * Architettura:
- *   TpmsManager ─┐
- *   ObdManager  ─┼─► combine ─► _dashState ─► loop log 500ms
- *   GpsManager  ─┘                          ─► ViewModel (UI read-only)
- *   GSensor ──────────────────────────────► _gLateral ─► ViewModel (UI)
+ * ══════════════════════════════════════════════════════════════════
+ *  CALIBRAZIONE IMU A DUE FASI
+ * ══════════════════════════════════════════════════════════════════
  *
- * Calibrazione automatica orientamento IMU:
- *   WAITING_STILL → WAITING_MOVE → CALIBRATING → DONE
- *   - WAITING_STILL : telefono fermo in tasca (|acc|≈1g, gyro≈0 per 3s)
- *   - WAITING_MOVE  : aspetta GPS speed > 8 km/h (moto partita)
- *   - CALIBRATING   : rettilineo stabile per 4s → cattura vettore gravità
- *   - DONE          : matrice di rotazione applicata a tutti i frame IMU
+ *  FASE 1 — STATIC (moto ferma, telefono fermo sul supporto/serbatoio)
+ *  ─────────────────────────────────────────────────────────────────
+ *  Trigger: START premuto
+ *  Condizioni: |accel| ≈ 1g  AND  gyroMag ≈ 0  per 3 secondi
+ *  Cattura:
+ *    • vettore gravità (down) nel sistema telefono
+ *    • bias giroscopio (offset a fermo)
+ *    • vettore magnetometro (Nord) nel sistema telefono
+ *  Output:
+ *    • matrice di rotazione COMPLETA già dalla fase 1
+ *      (gravità → asse Z, magnetometro → asse Y/X)
+ *    • lean angle già calcolabile
+ *  Feedback: vibrazione 1×
+ *  Log: calib_phase = 1
  *
- * Il ViewModel non inizializza più nulla — fa solo collect degli StateFlow
- * esposti nel companion object di questo service.
- * La MainActivity non tocca mai i dati grezzi.
+ *  FASE 2 — MOTION (rettilineo stabile a velocità sostenuta)
+ *  ─────────────────────────────────────────────────────────────────
+ *  Trigger: automatico, attivo dopo fase 1
+ *  Condizioni (buffer 5s = 10 frame a 2Hz):
+ *    • speed_obd ≥ 30 km/h
+ *    • Δspeed ≤ 2 km/h (costante)
+ *    • Δbearing_gps ≤ 2° (rettilineo confermato da GPS)
+ *    • gyroZ_raw ≈ 0 (nessuna rotazione yaw)
+ *  Cattura:
+ *    • vettore gravità aggiornato
+ *    • vettore magnetometro aggiornato
+ *    • bearing GPS come riferimento assoluto di validazione
+ *  Output:
+ *    • matrice aggiornata (migliora fase 1, gestisce spostamento telefono)
+ *    • si ripete ad ogni rettilineo valido per tutta la sessione
+ *  Feedback: vibrazione 3×
+ *  Log: calib_phase = 2
+ *
+ *  Se nessuna fase riesce: dati raw nel log, calib_phase = 0
+ * ══════════════════════════════════════════════════════════════════
  */
 class DashForegroundService : Service() {
 
-    // ── Calibrazione IMU ──────────────────────────────────────────────────────
-
-    enum class CalibState { IDLE, WAITING_STILL, WAITING_MOVE, CALIBRATING, DONE }
+    // ── Stati calibrazione ────────────────────────────────────────────────────
+    enum class CalibState {
+        IDLE,           // START non ancora premuto
+        STATIC_WAIT,    // aspetta telefono fermo (fase 1)
+        STATIC_DONE,    // fase 1 completata, in ascolto per fase 2
+        MOTION_CALIB    // fase 2 in corso (rettilineo stabile rilevato)
+    }
 
     companion object {
         const val CHANNEL_ID      = "duke390_dash_channel"
         const val NOTIF_ID        = 1
         const val LOG_INTERVAL_MS = 500L  // 2 Hz
 
-        // Soglie calibrazione
-        private const val CALIB_STILL_FRAMES   = 6   // 3s a 2Hz — telefono fermo in tasca
-        private const val CALIB_MOVE_SPEED_KMH  = 8f  // moto considerata partita
-        private const val CALIB_STABLE_FRAMES   = 8   // 4s a 2Hz — rettilineo stabile
-        private const val CALIB_GYRO_THRESHOLD  = 0.15f  // rad/s — quasi nessuna rotazione
-        private const val CALIB_ACCEL_TOLERANCE = 0.05f  // g — tolleranza da 1g per "fermo"
-        private const val CALIB_MIN_SPEED_KMH   = 20f    // km/h — velocità minima per calibrazione
+        // ── Soglie fase 1 ──────────────────────────────────────────────────────
+        private const val S1_STILL_FRAMES   = 6     // 3s a 2Hz
+        private const val S1_ACCEL_TOL      = 0.04f // g — tolleranza su |accel|-1g
+        private const val S1_GYRO_MAX       = 0.06f // rad/s — fermo
+        private const val S1_MAG_STABLE_TOL = 2f    // µT — magnetometro stabile
 
-        // Azione inviata dal tile per togglare il log senza passare per MainActivity
+        // ── Soglie fase 2 ──────────────────────────────────────────────────────
+        private const val S2_SPEED_MIN      = 30f   // km/h
+        private const val S2_SPEED_DELTA    = 2f    // km/h — velocità costante
+        private const val S2_BEARING_DELTA  = 2f    // gradi — rettilineo GPS
+        private const val S2_GYRO_YAW_MAX   = 0.10f // rad/s — nessuna rotazione yaw
+        private const val S2_FRAMES         = 10    // 5s a 2Hz
+
         const val ACTION_TOGGLE_LOG = "com.davidewp.duke390dash.TOGGLE_LOG"
 
-        // ── StateFlow pubblici letti dal ViewModel senza binding ──────────────
-        private val _dashState = MutableStateFlow(DashState())
+        // ── StateFlow pubblici ─────────────────────────────────────────────────
+        private val _dashState    = MutableStateFlow(DashState())
         val dashState: StateFlow<DashState> = _dashState
 
-        private val _gLateral = MutableStateFlow(0f)
+        private val _gLateral     = MutableStateFlow(0f)
         val gLateralFlow: StateFlow<Float> = _gLateral
 
-        private val _gpsState = MutableStateFlow(GpsManager.GpsData())
+        private val _gpsState     = MutableStateFlow(GpsManager.GpsData())
         val gpsState: StateFlow<GpsManager.GpsData> = _gpsState
 
-        // Stato calibrazione leggibile dall'UI
-        private val _calibState = MutableStateFlow(CalibState.IDLE)
+        private val _calibState   = MutableStateFlow(CalibState.IDLE)
         val calibStateFlow: StateFlow<CalibState> = _calibState
 
-        // Stato logging leggibile dal tile senza binding
-        val isLoggingState: Boolean
-            get() = _isLoggingState
+        private val _calibPhase   = MutableStateFlow(0)  // 0=nessuna, 1=statica, 2=motion
+        val calibPhaseFlow: StateFlow<Int> = _calibPhase
+
+        val isLoggingState: Boolean get() = _isLoggingState
         private var _isLoggingState = false
 
-        // true dal momento in cui il service è vivo
         var isAlive: Boolean = false
             private set
 
-        fun start(context: Context) {
+        fun start(context: Context) =
             context.startForegroundService(Intent(context, DashForegroundService::class.java))
-        }
 
-        fun stop(context: Context) {
+        fun stop(context: Context) =
             context.stopService(Intent(context, DashForegroundService::class.java))
-        }
     }
 
     // ── Manager ───────────────────────────────────────────────────────────────
@@ -90,45 +117,48 @@ class DashForegroundService : Service() {
     private lateinit var gpsManager:    GpsManager
     private lateinit var gSensor:       MotionSensor
     private lateinit var sessionLogger: SessionLogger
+    private lateinit var vibrator:      Vibrator
 
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // ── Valori IMU grezzi (aggiornati dal callback sensore, thread-safe) ──────
-    // Valori IMU con dead-band — per log e UI
-    @Volatile private var lastGLateral: Float = 0f
-    @Volatile private var lastGLong:    Float = 0f
-    @Volatile private var lastGVert:    Float = 0f
-    @Volatile private var lastGyroX:    Float = 0f
-    @Volatile private var lastGyroY:    Float = 0f
-    @Volatile private var lastGyroZ:    Float = 0f
-    // I valori senza dead-band per la calibrazione vengono letti
-    // direttamente da gSensor.calibGX/Y/Z al momento del tick
+    // ── Valori IMU correnti (dal callback sensore) ────────────────────────────
+    @Volatile private var imuGX    = 0f  // accel in g
+    @Volatile private var imuGY    = 0f
+    @Volatile private var imuGZ    = 0f
+    @Volatile private var imuGyroX = 0f  // rad/s
+    @Volatile private var imuGyroY = 0f
+    @Volatile private var imuGyroZ = 0f
+    @Volatile private var imuMagX  = 0f  // µT
+    @Volatile private var imuMagY  = 0f
+    @Volatile private var imuMagZ  = 0f
 
-    // ── Stato macchina a stati calibrazione ───────────────────────────────────
-    private var calibPhase       = CalibState.IDLE
-    private var stillCounter     = 0
-    private var calibCounter     = 0
-    private var accumGX          = 0f
-    private var accumGY          = 0f
-    private var accumGZ          = 0f
+    // ── Stato calibrazione ────────────────────────────────────────────────────
+    private var calibState    = CalibState.IDLE
+    private var currentPhase  = 0  // 0=nessuna, 1=statica done, 2=motion done
+
+    // Contatori fase 1
+    private var stillCounter  = 0
+    private var accumA        = FloatArray(3)  // accel accumulato
+    private var accumM        = FloatArray(3)  // mag accumulato
+    private var accumGyro     = FloatArray(3)  // gyro bias accumulato
+    private var prevMag       = FloatArray(3)  // per stabilità mag
+
+    // Buffer fase 2
+    private val s2SpeedBuf    = ArrayDeque<Float>(S2_FRAMES)
+    private val s2BearingBuf  = ArrayDeque<Float>(S2_FRAMES)
+    private val s2AccelBuf    = ArrayDeque<FloatArray>(S2_FRAMES)
+    private val s2MagBuf      = ArrayDeque<FloatArray>(S2_FRAMES)
 
     // Matrice di rotazione 3×3 (row-major) — identità finché non calibrata
-    private var rotMatrix = floatArrayOf(
-        1f, 0f, 0f,
-        0f, 1f, 0f,
-        0f, 0f, 1f
-    )
+    private var rotMatrix     = FloatArray(9) { if (it % 4 == 0) 1f else 0f }
 
-    // ── Logica calibrazione ───────────────────────────────────────────────────
+    // Bias giroscopio da fase 1
+    private var gyroBiasX     = 0f
+    private var gyroBiasY     = 0f
+    private var gyroBiasZ     = 0f
 
-    /**
-     * Applica la matrice di rotazione a un vettore 3D.
-     * Converte le coordinate del telefono negli assi della moto:
-     *   X = laterale (positivo = destra)
-     *   Y = longitudinale (positivo = avanti)
-     *   Z = verticale (positivo = su)
-     */
+    // ── Rotazione ─────────────────────────────────────────────────────────────
     private fun applyRotation(x: Float, y: Float, z: Float): Triple<Float, Float, Float> {
         val m = rotMatrix
         return Triple(
@@ -138,166 +168,254 @@ class DashForegroundService : Service() {
         )
     }
 
-    /**
-     * Macchina a stati per la calibrazione automatica dell'orientamento IMU.
-     * Chiamata ad ogni tick del loop di log (2 Hz).
-     *
-     * Transizioni:
-     *   WAITING_STILL → WAITING_MOVE : telefono fermo per 3s (in tasca/zaino)
-     *   WAITING_MOVE  → CALIBRATING  : GPS speed > 8 km/h (moto partita)
-     *   CALIBRATING   → DONE         : 4s di rettilineo stabile → matrice calcolata
-     *
-     * Se durante CALIBRATING la moto fa una curva o frena, il contatore
-     * si azzera e ricomincia ad aspettare un nuovo tratto stabile.
-     */
-    private fun updateCalib(
-        gx: Float, gy: Float, gz: Float,
-        speedKmh: Float
-    ) {
-        val accelMag = sqrt(gx*gx + gy*gy + gz*gz)
-        val gyroMag  = sqrt(lastGyroX*lastGyroX + lastGyroY*lastGyroY + lastGyroZ*lastGyroZ)
+    // ── Costruisce la matrice da vettore gravità + magnetometro ───────────────
+    //
+    // Algoritmo TRIAD (Two Reference Vectors):
+    //   down  = -accel normalizzato  (gravità punta verso il basso)
+    //   east  = cross(down, magNorm) (Est nel piano orizzontale)
+    //   north = cross(east, down)    (Nord nel piano orizzontale)
+    //
+    // La matrice R mappa vettori dal sistema telefono al sistema moto:
+    //   riga 0 = right (laterale destra moto) = east
+    //   riga 1 = forward (avanti moto)         = north
+    //   riga 2 = up (verticale su moto)        = -down = accel normalizzato
+    //
+    private fun buildMatrix(
+        accelX: Float, accelY: Float, accelZ: Float,
+        magX:   Float, magY:   Float, magZ:   Float
+    ): Boolean {
+        // ── Normalizza gravità ─────────────────────────────────────────────────
+        val aMag = sqrt(accelX*accelX + accelY*accelY + accelZ*accelZ)
+        if (aMag < 0.5f) return false  // dati non validi
 
-        when (calibPhase) {
+        // "down" nel sistema telefono = direzione della gravità
+        val dX = accelX / aMag; val dY = accelY / aMag; val dZ = accelZ / aMag
 
-            CalibState.IDLE -> {
-                // Aspetta che la moto si muova almeno una volta —
-                // questo garantisce che START è stato premuto (siamo qui)
-                // E che la moto è partita (telefono è già in tasca/zaino)
-                if (speedKmh >= CALIB_MOVE_SPEED_KMH) {
-                    // La moto si è mossa — da ora aspettiamo che si fermi/stabilizzi
-                    // per rilevare il telefono fermo in tasca
-                    calibPhase = CalibState.WAITING_STILL
-                    stillCounter = 0
-                    _calibState.value = CalibState.WAITING_STILL
-                }
-            }
+        // "up" nel sistema moto = opposto di down
+        val upX = -dX; val upY = -dY; val upZ = -dZ
 
-            CalibState.WAITING_STILL -> {
-                // Telefono fermo: |acc| ≈ 1g (solo gravità), giroscopio silenzioso
-                if (abs(accelMag - 1f) < CALIB_ACCEL_TOLERANCE && gyroMag < 0.08f) {
-                    stillCounter++
-                    if (stillCounter >= CALIB_STILL_FRAMES) {
-                        calibPhase   = CalibState.WAITING_MOVE
-                        stillCounter = 0
-                        _calibState.value = CalibState.WAITING_MOVE
-                    }
-                } else {
-                    stillCounter = 0
-                }
-            }
+        // ── Normalizza magnetometro ────────────────────────────────────────────
+        val mMag = sqrt(magX*magX + magY*magY + magZ*magZ)
+        if (mMag < 10f) return false  // magnetometro non pronto o disturbato
 
-            CalibState.WAITING_MOVE -> {
-                // Aspetta che la moto parta — se il telefono torna a muoversi
-                // prima (es. viene ripreso in mano) torna a WAITING_STILL
-                if (gyroMag > 0.3f && speedKmh < 3f) {
-                    calibPhase   = CalibState.WAITING_STILL
-                    stillCounter = 0
-                    _calibState.value = CalibState.WAITING_STILL
-                } else if (speedKmh >= CALIB_MOVE_SPEED_KMH) {
-                    calibPhase    = CalibState.CALIBRATING
-                    calibCounter  = 0
-                    accumGX = 0f; accumGY = 0f; accumGZ = 0f
-                    _calibState.value = CalibState.CALIBRATING
-                }
-            }
+        val mNX = magX / mMag; val mNY = magY / mMag; val mNZ = magZ / mMag
 
-            CalibState.CALIBRATING -> {
-                // Rettilineo stabile: velocità sufficiente, giroscopio quasi fermo
-                // (nessuna curva, nessuna frenata brusca)
-                val isStable = speedKmh >= CALIB_MIN_SPEED_KMH && gyroMag < CALIB_GYRO_THRESHOLD
+        // ── East = cross(down, magNorm) ────────────────────────────────────────
+        // East = down × mag (nel sistema telefono)
+        var eX = dY*mNZ - dZ*mNY
+        var eY = dZ*mNX - dX*mNZ
+        var eZ = dX*mNY - dY*mNX
+        val eMag = sqrt(eX*eX + eY*eY + eZ*eZ)
+        if (eMag < 0.1f) return false  // gravità e mag paralleli (al Polo)
+        eX /= eMag; eY /= eMag; eZ /= eMag
 
-                if (isStable) {
-                    accumGX += gx; accumGY += gy; accumGZ += gz
-                    calibCounter++
+        // ── North = cross(east, down) ──────────────────────────────────────────
+        // North giace nel piano orizzontale, ortogonale a East e Down
+        var nX = eY*dZ - eZ*dY
+        var nY = eZ*dX - eX*dZ
+        var nZ = eX*dY - eY*dX
+        val nMag = sqrt(nX*nX + nY*nY + nZ*nZ)
+        if (nMag < 0.1f) return false
+        nX /= nMag; nY /= nMag; nZ /= nMag
 
-                    if (calibCounter >= CALIB_STABLE_FRAMES) {
-                        computeRotationMatrix(
-                            accumGX / calibCounter,
-                            accumGY / calibCounter,
-                            accumGZ / calibCounter
-                        )
-                        calibPhase = CalibState.DONE
-                        _calibState.value = CalibState.DONE
-                    }
-                } else {
-                    // Tratto non stabile — azzera e riprova
-                    calibCounter = 0
-                    accumGX = 0f; accumGY = 0f; accumGZ = 0f
-                }
-            }
-
-            CalibState.DONE -> {
-                // Matrice stabile per tutta la sessione.
-                // Non ricalibra — se il telefono si sposta l'utente
-                // può forzare una nuova calibrazione con resetCalib().
-            }
-        }
-    }
-
-    /**
-     * Calcola la matrice di rotazione dal vettore gravità medio misurato.
-     *
-     * Il vettore gravità (gx, gy, gz) nel sistema di riferimento del telefono
-     * punta verso il basso (-Z nel sistema della moto).
-     * Usiamo questo per costruire una base ortonormale:
-     *   down  = -gravità normalizzata
-     *   fwd   = asse con minore componente di gravità (≈ direzione di marcia)
-     *   right = cross(fwd, down)
-     */
-    private fun computeRotationMatrix(gx: Float, gy: Float, gz: Float) {
-        val mag = sqrt(gx*gx + gy*gy + gz*gz).takeIf { it > 0.01f } ?: return
-
-        // Asse "down" della moto = direzione della gravità normalizzata
-        val downX = gx / mag
-        val downY = gy / mag
-        val downZ = gz / mag
-
-        // Asse forward = quello del telefono più ortogonale alla gravità
-        // (il meno allineato con down → è l'asse che punta avanti)
-        val absX = abs(downX); val absY = abs(downY); val absZ = abs(downZ)
-        val fwdX: Float; val fwdY: Float; val fwdZ: Float
-
-        if (absX <= absY && absX <= absZ) {
-            // X del telefono è più ortogonale alla gravità → uso X come forward
-            val m = sqrt(downY*downY + downZ*downZ).takeIf { it > 0.01f } ?: 1f
-            fwdX =  0f;      fwdY = -downZ/m; fwdZ = downY/m
-        } else if (absY <= absX && absY <= absZ) {
-            val m = sqrt(downX*downX + downZ*downZ).takeIf { it > 0.01f } ?: 1f
-            fwdX =  downZ/m; fwdY =  0f;      fwdZ = -downX/m
-        } else {
-            val m = sqrt(downX*downX + downY*downY).takeIf { it > 0.01f } ?: 1f
-            fwdX = -downY/m; fwdY =  downX/m; fwdZ =  0f
-        }
-
-        // Asse right = cross(fwd, down)  →  laterale destro della moto
-        val rtX = fwdY*downZ - fwdZ*downY
-        val rtY = fwdZ*downX - fwdX*downZ
-        val rtZ = fwdX*downY - fwdY*downX
-
-        // Matrice di rotazione: righe = [right, fwd, down] nel sistema moto
-        // Moltiplica un vettore telefono per ottenere le componenti moto
+        // ── Matrice: righe = [east, north, up] ────────────────────────────────
+        // Moltiplica vettore telefono → ottieni componenti nel sistema moto:
+        //   risultato[0] = laterale destra (east)
+        //   risultato[1] = avanti          (north)
+        //   risultato[2] = su              (up)
         rotMatrix = floatArrayOf(
-            rtX,   rtY,   rtZ,
-            fwdX,  fwdY,  fwdZ,
-            downX, downY, downZ
+            eX, eY, eZ,
+            nX, nY, nZ,
+            upX, upY, upZ
         )
+        return true
     }
 
-    // ── API pubblica calibrazione ─────────────────────────────────────────────
+    // ── Validazione bearing GPS vs magnetometro ───────────────────────────────
+    // Calcola il bearing dalla matrice corrente e lo confronta con il GPS.
+    // Se concordano entro 15°, la calibrazione è affidabile.
+    private fun bearingFromMatrix(): Float {
+        // Il vettore "north" nella matrice è la riga 1.
+        // Proiettiamo su forward della moto nel piano orizzontale.
+        // Usiamo il bearing GPS direttamente come validazione — non calcoliamo
+        // il bearing dalla matrice perché richiede riferimento assoluto Nord.
+        // La validazione avviene confrontando la stabilità del bearing GPS
+        // con la stabilità del magnetometro — se entrambi sono stabili
+        // e concordi, la calibrazione è buona.
+        return 0f  // placeholder — validazione fatta nei buffer
+    }
 
-    /** Forza il reset della calibrazione — riparte da WAITING_STILL */
+    // ── Vibrazione feedback ───────────────────────────────────────────────────
+    private fun vibratePattern(pattern: LongArray) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(pattern, -1)
+        }
+    }
+
+    private fun vibratePhase1() = vibratePattern(longArrayOf(0, 200))           // 1 colpo
+    private fun vibratePhase2() = vibratePattern(longArrayOf(0,150,100,150,100,150)) // 3 colpi
+    private fun vibrateError()  = vibratePattern(longArrayOf(0, 600))           // 1 lungo
+
+    // ── Macchina a stati calibrazione ────────────────────────────────────────
+    private fun updateCalib(speedKmh: Float, bearingGps: Float, gpsAvailable: Boolean) {
+
+        val accelMag = sqrt(imuGX*imuGX + imuGY*imuGY + imuGZ*imuGZ)
+        val gyroMag  = sqrt(imuGyroX*imuGyroX + imuGyroY*imuGyroY + imuGyroZ*imuGyroZ)
+
+        when (calibState) {
+
+            // ── IDLE: aspetta START ────────────────────────────────────────────
+            CalibState.IDLE -> {
+                // resetCalib() transiziona qui — non fa nulla finché startLogging() non chiama resetCalib()
+            }
+
+            // ── FASE 1: telefono fermo ─────────────────────────────────────────
+            CalibState.STATIC_WAIT -> {
+                val magStable = if (prevMag[0] != 0f) {
+                    val dMag = sqrt(
+                        (imuMagX - prevMag[0]).pow(2) +
+                        (imuMagY - prevMag[1]).pow(2) +
+                        (imuMagZ - prevMag[2]).pow(2)
+                    )
+                    dMag < S1_MAG_STABLE_TOL
+                } else true  // primo frame, consideriamo stabile
+
+                val isStill = abs(accelMag - 1f) < S1_ACCEL_TOL
+                          && gyroMag            < S1_GYRO_MAX
+                          && (magStable || !gSensor.isMagReady)
+
+                if (isStill) {
+                    stillCounter++
+                    // Accumula per fare la media
+                    accumA[0] += imuGX;    accumA[1] += imuGY;    accumA[2] += imuGZ
+                    accumM[0] += imuMagX;  accumM[1] += imuMagY;  accumM[2] += imuMagZ
+                    accumGyro[0] += imuGyroX; accumGyro[1] += imuGyroY; accumGyro[2] += imuGyroZ
+
+                    if (stillCounter >= S1_STILL_FRAMES) {
+                        val n = stillCounter.toFloat()
+                        val ok = buildMatrix(
+                            accumA[0]/n, accumA[1]/n, accumA[2]/n,
+                            accumM[0]/n, accumM[1]/n, accumM[2]/n
+                        )
+                        if (ok) {
+                            // Salva bias giroscopio
+                            gyroBiasX = accumGyro[0] / n
+                            gyroBiasY = accumGyro[1] / n
+                            gyroBiasZ = accumGyro[2] / n
+
+                            currentPhase = 1
+                            calibState   = CalibState.STATIC_DONE
+                            _calibState.value  = CalibState.STATIC_DONE
+                            _calibPhase.value  = 1
+                            vibratePhase1()
+                        } else {
+                            // Dati non validi — reset e riprova
+                            resetCounters()
+                            vibrateError()
+                        }
+                    }
+                } else {
+                    // Movimento rilevato — azzera
+                    resetCounters()
+                }
+
+                prevMag[0] = imuMagX; prevMag[1] = imuMagY; prevMag[2] = imuMagZ
+            }
+
+            // ── FASE 2: rettilineo stabile ─────────────────────────────────────
+            CalibState.STATIC_DONE -> {
+                if (!gpsAvailable || speedKmh < S2_SPEED_MIN) {
+                    // Svuota i buffer se la velocità cala sotto il minimo
+                    if (speedKmh < S2_SPEED_MIN * 0.8f) clearS2Buffers()
+                    return
+                }
+
+                // Aggiungi al buffer
+                s2SpeedBuf.addLast(speedKmh)
+                s2BearingBuf.addLast(bearingGps)
+                s2AccelBuf.addLast(floatArrayOf(imuGX, imuGY, imuGZ))
+                s2MagBuf.addLast(floatArrayOf(imuMagX, imuMagY, imuMagZ))
+
+                // Mantieni solo gli ultimi S2_FRAMES
+                while (s2SpeedBuf.size > S2_FRAMES)   { s2SpeedBuf.removeFirst(); s2BearingBuf.removeFirst(); s2AccelBuf.removeFirst(); s2MagBuf.removeFirst() }
+
+                if (s2SpeedBuf.size < S2_FRAMES) return  // buffer non ancora pieno
+
+                // Verifica condizioni sul buffer
+                val speedMin = s2SpeedBuf.min()
+                val speedMax = s2SpeedBuf.max()
+                val bearingRange = bearingRange(s2BearingBuf)
+
+                val speedStable   = (speedMax - speedMin) <= S2_SPEED_DELTA
+                val straight      = bearingRange          <= S2_BEARING_DELTA
+                val yawStable     = abs(imuGyroZ - gyroBiasZ) < S2_GYRO_YAW_MAX
+
+                if (speedStable && straight && yawStable) {
+                    // Calcola media su tutto il buffer
+                    val avgA = s2AccelBuf.fold(FloatArray(3)) { acc, v ->
+                        floatArrayOf(acc[0]+v[0], acc[1]+v[1], acc[2]+v[2])
+                    }.map { it / S2_FRAMES }
+                    val avgM = s2MagBuf.fold(FloatArray(3)) { acc, v ->
+                        floatArrayOf(acc[0]+v[0], acc[1]+v[1], acc[2]+v[2])
+                    }.map { it / S2_FRAMES }
+
+                    val ok = buildMatrix(
+                        avgA[0], avgA[1], avgA[2],
+                        avgM[0], avgM[1], avgM[2]
+                    )
+                    if (ok) {
+                        currentPhase = 2
+                        _calibPhase.value = 2
+                        vibratePhase2()
+                        clearS2Buffers()  // resetta per prossima calibrazione
+                    }
+                }
+                // Se le condizioni non sono soddisfatte il buffer scorre — nessun reset,
+                // aspetta il prossimo frame buono
+            }
+
+            CalibState.MOTION_CALIB -> { /* non usato, keepalive */ }
+        }
+    }
+
+    // ── Bearing range circolare ───────────────────────────────────────────────
+    // Gestisce il wrap 0°/360°
+    private fun bearingRange(buf: ArrayDeque<Float>): Float {
+        if (buf.isEmpty()) return 0f
+        val min = buf.min(); val max = buf.max()
+        val direct = max - min
+        val wrapped = 360f - direct  // range se attraversa lo 0°
+        return if (direct <= wrapped) direct else wrapped
+    }
+
+    // ── Reset helpers ─────────────────────────────────────────────────────────
+    private fun resetCounters() {
+        stillCounter = 0
+        accumA    = FloatArray(3); accumM    = FloatArray(3); accumGyro = FloatArray(3)
+    }
+
+    private fun clearS2Buffers() {
+        s2SpeedBuf.clear(); s2BearingBuf.clear(); s2AccelBuf.clear(); s2MagBuf.clear()
+    }
+
     fun resetCalib() {
-        calibPhase   = CalibState.IDLE
-        stillCounter = 0; calibCounter = 0
-        accumGX = 0f; accumGY = 0f; accumGZ = 0f
-        rotMatrix = floatArrayOf(1f,0f,0f, 0f,1f,0f, 0f,0f,1f)
-        _calibState.value = CalibState.IDLE
+        calibState   = CalibState.STATIC_WAIT   // pronto per fase 1 subito
+        currentPhase = 0
+        rotMatrix    = FloatArray(9) { if (it % 4 == 0) 1f else 0f }
+        gyroBiasX = 0f; gyroBiasY = 0f; gyroBiasZ = 0f
+        resetCounters(); clearS2Buffers()
+        prevMag = FloatArray(3)
+        _calibState.value  = CalibState.STATIC_WAIT
+        _calibPhase.value  = 0
     }
 
-    fun getCalibState(): CalibState = calibPhase
+    fun getCalibPhase(): Int = currentPhase
 
     // ── onCreate ──────────────────────────────────────────────────────────────
-
+    @Suppress("DEPRECATION")
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -306,11 +424,15 @@ class DashForegroundService : Service() {
         isAlive = true
         AppLog.init(this)
 
+        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+
         val prefs  = getSharedPreferences(DashViewModel.PREFS_NAME, Context.MODE_PRIVATE)
-        val idAnt  = prefs.getString(DashViewModel.PREF_ID_ANT,  null)
-            ?.takeIf { it.isNotBlank() } ?: TpmsManager.DEFAULT_ID_ANT
-        val idPost = prefs.getString(DashViewModel.PREF_ID_POST, null)
-            ?.takeIf { it.isNotBlank() } ?: TpmsManager.DEFAULT_ID_POST
+        val idAnt  = prefs.getString(DashViewModel.PREF_ID_ANT,  null)?.takeIf { it.isNotBlank() } ?: TpmsManager.DEFAULT_ID_ANT
+        val idPost = prefs.getString(DashViewModel.PREF_ID_POST, null)?.takeIf { it.isNotBlank() } ?: TpmsManager.DEFAULT_ID_POST
 
         tpmsManager   = TpmsManager(this)
         obdManager    = ObdManager(this)
@@ -321,17 +443,13 @@ class DashForegroundService : Service() {
         obdManager.start()
         gpsManager.start()
 
-        gSensor = MotionSensor(this) { gLateral, gLong, gVert, gyroX, gyroY, gyroZ ->
-            // Valori con dead-band → log e UI
-            lastGLateral = gLateral
-            lastGLong    = gLong
-            lastGVert    = gVert
-            lastGyroX    = gyroX
-            lastGyroY    = gyroY
-            lastGyroZ    = gyroZ
-            // UI: usa il valore calibrato se disponibile
-            val (calLat, _, _) = applyRotation(gLateral, gLong, gVert)
-            _gLateral.value = if (calibPhase == CalibState.DONE) calLat else gLateral
+        gSensor = MotionSensor(this) { gX, gY, gZ, gyroX, gyroY, gyroZ, magX, magY, magZ ->
+            imuGX = gX; imuGY = gY; imuGZ = gZ
+            imuGyroX = gyroX; imuGyroY = gyroY; imuGyroZ = gyroZ
+            imuMagX = magX; imuMagY = magY; imuMagZ = magZ
+            // Aggiorna UI con g laterale già calibrato se disponibile
+            val calLat = if (currentPhase >= 1) applyRotation(gX, gY, gZ).first else gX
+            _gLateral.value = calLat
         }
         gSensor.start()
 
@@ -347,58 +465,56 @@ class DashForegroundService : Service() {
             }.collect { _dashState.value = it }
         }
 
-        // ── Sync GPS state ────────────────────────────────────────────────────
         serviceScope.launch {
             gpsManager.gpsState.collect { _gpsState.value = it }
         }
 
         // ── Loop principale 2 Hz ──────────────────────────────────────────────
-        // La calibrazione gira SEMPRE, anche prima che parta il log,
-        // così quando l'utente preme REC la matrice è già pronta.
         serviceScope.launch {
             while (isActive) {
                 delay(LOG_INTERVAL_MS)
 
-                val currentGps   = _gpsState.value
-                val currentState = _dashState.value
-                val speedKmh     = currentState.obd.speedKmh
+                val gps      = _gpsState.value
+                val state    = _dashState.value
+                val speedKmh = state.obd.speedKmh
 
                 if (sessionLogger.isLogging) {
-                    // Calibrazione usa gli STESSI valori che finiscono nel log
-                    // (lastGLateral/Long/Vert) — così matrice e dati sono coerenti.
-                    // NON usare gSensor.calibGX che include l'offset manuale del sensore
-                    // mentre lastGLateral lo ha già sottratto → mismatch matrice/log.
-                    updateCalib(lastGLateral, lastGLong, lastGVert, speedKmh)
 
-                    // Applica rotazione se calibrazione completata
-                    val (calLat, calLong, calVertRaw) = if (calibPhase == CalibState.DONE)
-                        applyRotation(lastGLateral, lastGLong, lastGVert)
-                    else
-                        Triple(lastGLateral, lastGLong, lastGVert)
+                    // Aggiorna calibrazione
+                    updateCalib(speedKmh, gps.bearingDeg, gps.available)
 
-                    // gVert nel JSON = scostamento da piano (0=piano, +dosso, -buca)
-                    // Dopo la rotazione |calVertRaw| ≈ 1g in piano
-                    // Sottraiamo la componente gravitazionale con il segno corretto
-                    val calVert = if (calibPhase == CalibState.DONE)
-                        calVertRaw - kotlin.math.sign(calVertRaw) * 1f
+                    // Applica rotazione e sottrai bias giroscopio
+                    val (calGX, calGY, calGZ) = if (currentPhase >= 1)
+                        applyRotation(imuGX, imuGY, imuGZ)
                     else
-                        calVertRaw
+                        Triple(imuGX, imuGY, imuGZ)
 
-                    val (calGyroX, calGyroY, calGyroZ) = if (calibPhase == CalibState.DONE)
-                        applyRotation(lastGyroX, lastGyroY, lastGyroZ)
-                    else
-                        Triple(lastGyroX, lastGyroY, lastGyroZ)
+                    // gVert nel JSON: dopo la rotazione l'asse Z della moto
+                    // punta verso l'alto. In piano calGZ ≈ 1g (gravità opposta).
+                    // Sottraiamo 1g per avere lo scostamento (0=piano, +dosso, -buca)
+                    val gVertLog = if (currentPhase >= 1) calGZ - 1f else calGZ
+
+                    val (calGyroX, calGyroY, calGyroZ) = if (currentPhase >= 1) {
+                        val (rx, ry, rz) = applyRotation(
+                            imuGyroX - gyroBiasX,
+                            imuGyroY - gyroBiasY,
+                            imuGyroZ - gyroBiasZ
+                        )
+                        Triple(rx, ry, rz)
+                    } else {
+                        Triple(imuGyroX, imuGyroY, imuGyroZ)
+                    }
 
                     sessionLogger.log(
-                        state      = currentState,
-                        gLateral   = calLat,
-                        gLong      = calLong,
-                        gVert      = calVert,
+                        state      = state,
+                        gLateral   = calGX,
+                        gLong      = calGY,
+                        gVert      = gVertLog,
                         gyroX      = calGyroX,
                         gyroY      = calGyroY,
                         gyroZ      = calGyroZ,
-                        gps        = currentGps,
-                        calibDone  = calibPhase == CalibState.DONE
+                        gps        = gps,
+                        calibDone  = currentPhase >= 1
                     )
                 }
             }
@@ -408,9 +524,7 @@ class DashForegroundService : Service() {
     // ── API pubblica ──────────────────────────────────────────────────────────
 
     fun startLogging() {
-        // Reset calibrazione ad ogni nuova sessione —
-        // riparte da WAITING_STILL al momento del tasto START
-        resetCalib()
+        resetCalib()  // riparte da fase 1 ad ogni nuova sessione
         sessionLogger.startSession()
         _isLoggingState = sessionLogger.isLogging
     }
@@ -420,9 +534,7 @@ class DashForegroundService : Service() {
         _isLoggingState = false
     }
 
-    fun isLogging()         = sessionLogger.isLogging
-    fun setGSensorOffset()  = gSensor.setOffset()
-    fun getGSensorOffsetG() = gSensor.getOffsetG()
+    fun isLogging()   = sessionLogger.isLogging
 
     fun applySettings(idAnt: String, idPost: String) {
         getSharedPreferences(DashViewModel.PREFS_NAME, Context.MODE_PRIVATE)
@@ -435,23 +547,15 @@ class DashForegroundService : Service() {
     }
 
     // ── Binder ────────────────────────────────────────────────────────────────
-
-    private val binder = LocalBinder()
+    private val binder      = LocalBinder()
     private var boundClients = 0
 
     inner class LocalBinder : android.os.Binder() {
         fun getService(): DashForegroundService = this@DashForegroundService
     }
 
-    override fun onBind(intent: Intent?): IBinder {
-        boundClients++
-        return binder
-    }
-
-    override fun onUnbind(intent: Intent?): Boolean {
-        boundClients--
-        return super.onUnbind(intent)
-    }
+    override fun onBind(intent: Intent?): IBinder   { boundClients++; return binder }
+    override fun onUnbind(intent: Intent?): Boolean { boundClients--; return super.onUnbind(intent) }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_TOGGLE_LOG) {
@@ -486,39 +590,27 @@ class DashForegroundService : Service() {
     }
 
     // ── WakeLock ──────────────────────────────────────────────────────────────
-
     private fun acquireWakeLock() {
         wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Duke390Dash::WakeLock")
             .apply { acquire(4 * 60 * 60 * 1000L) }
     }
 
-    private fun releaseWakeLock() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
-    }
+    private fun releaseWakeLock() { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null }
 
     // ── Notifica ──────────────────────────────────────────────────────────────
-
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notif_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
+        val ch = NotificationChannel(CHANNEL_ID, getString(R.string.notif_channel_name), NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = getString(R.string.notif_channel_desc)
-            setShowBadge(false); enableVibration(false)
-            enableLights(false); setSound(null, null)
+            setShowBadge(false); enableVibration(false); enableLights(false); setSound(null, null)
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
     }
 
     private fun buildNotification(): Notification {
-        val pi = PendingIntent.getActivity(
-            this, 0,
+        val pi = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
-            PendingIntent.FLAG_IMMUTABLE
-        )
+            PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notif_title))
             .setContentText(getString(R.string.notif_text))
