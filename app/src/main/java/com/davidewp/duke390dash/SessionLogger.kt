@@ -101,13 +101,15 @@ class SessionLogger(private val context: Context) {
         gyroZ:      Float = 0f,
         gps:        GpsManager.GpsData = GpsManager.GpsData(),
         calibDone:  Boolean = false,
-        calibPhase: Int     = 0         // 0=nessuna, 1=statica, 2=motion
+        calibPhase: Int     = 0,
+        leanAngle:  Float   = 0f  // <--- AGGIUNGI QUESTO PARAMETRO
     ) {
         if (!isLogging) return
         val ts = tsSdf.format(Date())
         try {
+            // Passa leanAngle a writeJsonEntry (e se vuoi anche a writeCsvRow)
             writeCsvRow(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps)
-            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps, calibDone, calibPhase)
+            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps, calibDone, calibPhase, leanAngle)
         } catch (e: Exception) {
             Log.e(TAG, "Errore scrittura log: ${e.message}")
         }
@@ -163,8 +165,9 @@ class SessionLogger(private val context: Context) {
         gLateral: Float, gLong: Float, gVert: Float,
         gyroX: Float, gyroY: Float, gyroZ: Float,
         gps: GpsManager.GpsData,
-        calibDone:  Boolean = false,
-        calibPhase: Int     = 0
+        calibDone: Boolean = false,
+        calibPhase: Int = 0,
+        leanAngle: Any
     ) {
         val ant  = state.tpmsAnt
         val post = state.tpmsPost
@@ -204,6 +207,7 @@ class SessionLogger(private val context: Context) {
             })
             put("sensors", JSONObject().apply {
                 put("g_lateral",      gLateral)        // accelerometro asse X in G
+                put("lean_angle_deg", leanAngle)
                 put("g_long",    gLong)   // ← beccheggio: positivo = accelerazione, negativo = frenata
                 put("g_vert",    gVert)   // ← verticale: positivo = dosso, negativo = buca
                 put("gyro_x",         gyroX)           // roll  rad/s — lean angle sul manubrio

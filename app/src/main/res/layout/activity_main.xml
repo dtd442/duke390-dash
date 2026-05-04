@@ -255,47 +255,61 @@
             <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
         </LinearLayout>
 
-        <!-- G LATERALI -->
+        <!-- LEAN ANGLE (ANGOLO DI PIEGA) -->
         <LinearLayout
             android:layout_width="match_parent" android:layout_height="0dp"
             android:layout_weight="0.87" android:layout_marginBottom="2dp"
             android:orientation="vertical" android:background="#1A1A1A" android:padding="6dp">
+
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="@string/label_g_lateral" android:textColor="#FFFFFF"
+                android:text="LEAN ANGLE" android:textColor="#FFFFFF"
                 android:textSize="12sp" android:textStyle="bold"/>
+
+            <!-- Barre di inclinazione -->
             <LinearLayout
-                android:layout_width="match_parent" android:layout_height="6dp"
+                android:layout_width="match_parent" android:layout_height="10dp"
                 android:layout_marginTop="4dp"
                 android:orientation="horizontal"
-                android:weightSum="2"
+                android:weightSum="120"
                 android:background="#333333">
-                <ProgressBar android:id="@+id/barGLeft"
+
+                <!-- Barra Sinistra (max 60 gradi) -->
+                <ProgressBar android:id="@+id/barLeanLeft"
                     style="@android:style/Widget.ProgressBar.Horizontal"
-                    android:layout_width="0dp" android:layout_height="6dp"
-                    android:layout_weight="1" android:max="100" android:progress="0"
+                    android:layout_width="0dp" android:layout_height="10dp"
+                    android:layout_weight="60" android:max="60" android:progress="0"
                     android:rotationY="180"
-                    android:progressTint="#FF3300" android:progressBackgroundTint="#00000000"/>
-                <View android:layout_width="2dp" android:layout_height="6dp" android:background="#666666"/>
-                <ProgressBar android:id="@+id/barGRight"
+                    android:progressTint="#FF5722" android:progressBackgroundTint="#00000000"/>
+
+                <View android:layout_width="2dp" android:layout_height="10dp" android:background="#FFFFFF"/>
+
+                <!-- Barra Destra (max 60 gradi) -->
+                <ProgressBar android:id="@+id/barLeanRight"
                     style="@android:style/Widget.ProgressBar.Horizontal"
-                    android:layout_width="0dp" android:layout_height="6dp"
-                    android:layout_weight="1" android:max="100" android:progress="0"
-                    android:progressTint="#FF3300" android:progressBackgroundTint="#00000000"/>
+                    android:layout_width="0dp" android:layout_height="10dp"
+                    android:layout_weight="60" android:max="60" android:progress="0"
+                    android:progressTint="#FF5722" android:progressBackgroundTint="#00000000"/>
             </LinearLayout>
+
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal">
-                <TextView android:id="@+id/valGDir"
+                android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="2dp">
+
+                <TextView android:id="@+id/valLeanSide"
                     android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:text="•" android:textColor="#FFFFFF"
-                    android:textSize="20sp" android:textStyle="bold"/>
-                <TextView android:id="@+id/valG"
+                    android:layout_weight="1" android:text="LEFT" android:textColor="#666666"
+                    android:textSize="14sp" android:textStyle="bold" android:visibility="invisible"/>
+
+                <TextView android:id="@+id/valLeanAngle"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="0.00 G" android:textColor="#FFFFFF"
-                    android:textSize="20sp" android:textStyle="bold" android:gravity="center"/>
+                    android:text="0°" android:textColor="#FFFFFF"
+                    android:textSize="28sp" android:textStyle="bold" android:gravity="center"/>
+
                 <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:text=""/>
+                    android:layout_weight="1" android:text="RIGHT" android:textColor="#666666"
+                    android:textSize="14sp" android:textStyle="bold" android:gravity="right" android:visibility="invisible"
+                    android:id="@+id/valLeanSideRight"/>
             </LinearLayout>
-            <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+
         </LinearLayout>
 
         <!-- ARIA + ANTICIPO -->

@@ -188,33 +188,36 @@ class DashForegroundService : Service() {
         accelX: Float, accelY: Float, accelZ: Float,
         magX:   Float, magY:   Float, magZ:   Float
     ): Boolean {
-        // ── Normalizza gravità ─────────────────────────────────────────────────
+
+        // ── IMPOSTAZIONI DI INVERSIONE RAPIDA ──────────────────────────────────
+        val invertiDestraSinistra = true  // Cambia in false se la piega è invertita
+        val invertiAvantiDietro   = false // Cambia in true se accel/freno sono invertiti
+        // ───────────────────────────────────────────────────────────────────────
+
         val aMag = sqrt(accelX*accelX + accelY*accelY + accelZ*accelZ)
-        if (aMag < 0.5f) return false  // dati non validi
+        if (aMag < 0.5f) return false
 
-        // "down" nel sistema telefono = direzione della gravità
         val dX = accelX / aMag; val dY = accelY / aMag; val dZ = accelZ / aMag
-
-        // "up" nel sistema moto = opposto di down
         val upX = -dX; val upY = -dY; val upZ = -dZ
 
-        // ── Normalizza magnetometro ────────────────────────────────────────────
         val mMag = sqrt(magX*magX + magY*magY + magZ*magZ)
-        if (mMag < 10f) return false  // magnetometro non pronto o disturbato
-
+        if (mMag < 10f) return false
         val mNX = magX / mMag; val mNY = magY / mMag; val mNZ = magZ / mMag
 
-        // ── East = cross(down, magNorm) ────────────────────────────────────────
-        // East = down × mag (nel sistema telefono)
+        // Calcolo East (Laterale)
         var eX = dY*mNZ - dZ*mNY
         var eY = dZ*mNX - dX*mNZ
         var eZ = dX*mNY - dY*mNX
         val eMag = sqrt(eX*eX + eY*eY + eZ*eZ)
-        if (eMag < 0.1f) return false  // gravità e mag paralleli (al Polo)
+        if (eMag < 0.1f) return false
         eX /= eMag; eY /= eMag; eZ /= eMag
 
-        // ── North = cross(east, down) ──────────────────────────────────────────
-        // North giace nel piano orizzontale, ortogonale a East e Down
+        // APPLICA INVERSIONE LATERALE
+        if (invertiDestraSinistra) {
+            eX = -eX; eY = -eY; eZ = -eZ
+        }
+
+        // Calcolo North (Longitudinale)
         var nX = eY*dZ - eZ*dY
         var nY = eZ*dX - eX*dZ
         var nZ = eX*dY - eY*dX
@@ -222,11 +225,12 @@ class DashForegroundService : Service() {
         if (nMag < 0.1f) return false
         nX /= nMag; nY /= nMag; nZ /= nMag
 
-        // ── Matrice: righe = [east, north, up] ────────────────────────────────
-        // Moltiplica vettore telefono → ottieni componenti nel sistema moto:
-        //   risultato[0] = laterale destra (east)
-        //   risultato[1] = avanti          (north)
-        //   risultato[2] = su              (up)
+        // APPLICA INVERSIONE LONGITUDINALE
+        if (invertiAvantiDietro) {
+            nX = -nX; nY = -nY; nZ = -nZ
+        }
+
+        // Costruzione Matrice Finale
         rotMatrix = floatArrayOf(
             eX, eY, eZ,
             nX, nY, nZ,
@@ -491,20 +495,28 @@ class DashForegroundService : Service() {
 
                 if (sessionLogger.isLogging) {
 
-                    // Aggiorna calibrazione
+                    // 1. Aggiorna calibrazione
                     updateCalib(speedKmh, gps.bearingDeg, gps.available)
 
-                    // Applica rotazione e sottrai bias giroscopio
+                    // 2. Applica rotazione e sottrai bias giroscopio
                     val (calGX, calGY, calGZ) = if (currentPhase >= 1)
                         applyRotation(imuGX, imuGY, imuGZ)
                     else
                         Triple(imuGX, imuGY, imuGZ)
 
-                    // gVert nel JSON: dopo la rotazione l'asse Z della moto
-                    // punta verso l'alto. In piano calGZ ≈ 1g (gravità opposta).
-                    // Sottraiamo 1g per avere lo scostamento (0=piano, +dosso, -buca)
+                    // 3. CALCOLO LEAN ANGLE (Angolo di piega)
+                    // Usiamo atan2 tra asse laterale (X) e verticale (Z)
+                    // Il risultato è in gradi: positivi = piega a destra, negativi = sinistra
+                    val leanAngle = if (currentPhase >= 1) {
+                        Math.toDegrees(atan2(calGX.toDouble(), calGZ.toDouble())).toFloat()
+                    } else {
+                        0f
+                    }
+
+                    // 4. Calcolo gVert per il log (scostamento da 1g)
                     val gVertLog = if (currentPhase >= 1) calGZ - 1f else calGZ
 
+                    // 5. Rotazione giroscopio (già presente)
                     val (calGyroX, calGyroY, calGyroZ) = if (currentPhase >= 1) {
                         val (rx, ry, rz) = applyRotation(
                             imuGyroX - gyroBiasX,
@@ -516,6 +528,7 @@ class DashForegroundService : Service() {
                         Triple(imuGyroX, imuGyroY, imuGyroZ)
                     }
 
+                    // 6. Invia i dati al Logger (aggiungendo leanAngle)
                     sessionLogger.log(
                         state      = state,
                         gLateral   = calGX,
@@ -526,7 +539,8 @@ class DashForegroundService : Service() {
                         gyroZ      = calGyroZ,
                         gps        = gps,
                         calibDone  = currentPhase >= 1,
-                        calibPhase = currentPhase
+                        calibPhase = currentPhase,
+                        leanAngle  = leanAngle // <--- Passiamo il valore calcolato
                     )
                 }
             }

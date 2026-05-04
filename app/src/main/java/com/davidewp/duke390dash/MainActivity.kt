@@ -284,6 +284,8 @@ class MainActivity : AppCompatActivity() {
     private fun initNa() {
         val na   = getString(R.string.na)
         val dash = getString(R.string.dash)
+
+        // TPMS e OBD
         binding.valAntPress.text      = na;  binding.commentAntPress.text  = dash
         binding.valAntTemp.text       = na;  binding.commentAntTemp.text   = dash
         binding.valPostPress.text     = na;  binding.commentPostPress.text = dash
@@ -297,8 +299,15 @@ class MainActivity : AppCompatActivity() {
         binding.valSpeedMax.text      = na
         binding.valRpmMax.text        = na
         binding.valLoadMax.text       = na
-        binding.valG.text             = "0.00 G"
-        binding.valGDir.text          = "•"
+
+        // NUOVI CAMPI LEAN ANGLE
+        binding.valLeanAngle.text = "0°"
+        binding.valLeanSide.visibility = android.view.View.INVISIBLE
+        binding.valLeanSideRight.visibility = android.view.View.INVISIBLE
+
+        // Reset barre (opzionale, utile per sicurezza)
+        binding.barLeanLeft.progress = 0
+        binding.barLeanRight.progress = 0
     }
 
     // ─── Sweep ────────────────────────────────────────────────────────────────
@@ -310,7 +319,7 @@ class MainActivity : AppCompatActivity() {
             binding.barTps, binding.barLoad,
             binding.barIat, binding.barAfr,
             binding.barConsume, binding.barOilTemp,
-            binding.barGLeft, binding.barGRight
+            binding.barLeanLeft, binding.barLeanRight
         )
         val upAnimator = ValueAnimator.ofInt(0, 100).apply {
             duration = 600; interpolator = DecelerateInterpolator()
@@ -331,26 +340,39 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetTextI18n")
     private fun updateGSensor(gLateral: Float) {
-        val absG    = Math.abs(gLateral)
-        val percent = (absG / 1.5f * 100f).toInt().coerceIn(0, 100)
+        // 1. Calcolo Angolo (gLateral arriva corretto dal Service)
+        val leanAngle = Math.toDegrees(Math.atan2(gLateral.toDouble(), 1.0)).toFloat()
+        val absAngle = Math.abs(leanAngle)
+
+        // Percentuale per le barre (scala 0-60 gradi)
+        val percent = absAngle.toInt().coerceIn(0, 60)
+
+        // 2. Colore dinamico (Verde -> Arancio -> Rosso)
         val color = when {
-            absG < 0.3f -> 0xFF00CC44.toInt()
-            absG < 0.7f -> 0xFFEF9F27.toInt()
-            else        -> 0xFFFF3300.toInt()
+            absAngle < 20f -> 0xFF00CC44.toInt() // Verde
+            absAngle < 40f -> 0xFFEF9F27.toInt() // Arancio
+            else           -> 0xFFFF3300.toInt() // Rosso
         }
-        val arrow = when {
-            gLateral > 0.1f  -> "→"
-            gLateral < -0.1f -> "←"
-            else             -> "•"
+
+        // 3. Aggiornamento Testo e Colori (Usa i tuoi ID originali)
+        binding.valLeanAngle.text = "${absAngle.toInt()}°"
+        binding.valLeanAngle.setTextColor(color)
+
+
+
+        // 4. Aggiornamento Barre (barLeanLeft e barLeanRight)
+        // Se gLateral è positivo (+) -> Destra
+        if (gLateral > 0) {
+            binding.barLeanLeft.progress = 0
+            binding.barLeanRight.progress = percent
+        } else {
+            binding.barLeanLeft.progress = percent
+            binding.barLeanRight.progress = 0
         }
-        binding.valG.text = "%.2f G".format(absG)
-        binding.valGDir.text = arrow
-        binding.valG.setTextColor(color)
-        binding.valGDir.setTextColor(color)
-        if (gLateral < 0) { binding.barGLeft.progress = percent; binding.barGRight.progress = 0 }
-        else              { binding.barGLeft.progress = 0;        binding.barGRight.progress = percent }
-        setBarColor(binding.barGLeft, color)
-        setBarColor(binding.barGRight, color)
+
+        // Applica il colore alle barre per renderle visibili
+        setBarColor(binding.barLeanLeft, color)
+        setBarColor(binding.barLeanRight, color)
     }
 
     // ─── UI principale ────────────────────────────────────────────────────────
