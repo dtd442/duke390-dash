@@ -63,7 +63,7 @@ class DashForegroundService : Service() {
         val gpsState: StateFlow<GpsManager.GpsData> = _gpsState
 
         // Stato calibrazione leggibile dall'UI
-        private val _calibState = MutableStateFlow(CalibState.WAITING_STILL)
+        private val _calibState = MutableStateFlow(CalibState.IDLE)
         val calibStateFlow: StateFlow<CalibState> = _calibState
 
         // Stato logging leggibile dal tile senza binding

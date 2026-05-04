@@ -185,6 +185,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // ── Collect calibState → pallino calibrazione ─────────────────────────
+        lifecycleScope.launch {
+            DashForegroundService.calibStateFlow.collect { state ->
+                runOnUiThread { updateCalibDot(state) }
+            }
+        }
+
         notifyTile()
     }
 
@@ -192,6 +199,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         notifyTile()
         hideSystemBars()
+        // Aggiorna il pallino registrazione — potrebbe essere cambiato
+        // tramite il tile di sistema mentre l'Activity era in pausa
+        updateRecordingDot(dashService?.isLogging() == true)
     }
 
     override fun onPause() {
@@ -221,6 +231,25 @@ class MainActivity : AppCompatActivity() {
             window.attributes.layoutInDisplayCutoutMode =
                 android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+    }
+
+    // ─── Status dots ──────────────────────────────────────────────────────────
+
+    private fun updateCalibDot(state: DashForegroundService.CalibState) {
+        val color = when (state) {
+            DashForegroundService.CalibState.IDLE          -> 0xFF333333.toInt() // grigio
+            DashForegroundService.CalibState.WAITING_STILL,
+            DashForegroundService.CalibState.WAITING_MOVE,
+            DashForegroundService.CalibState.CALIBRATING   -> 0xFFEF9F27.toInt() // arancio
+            DashForegroundService.CalibState.DONE          -> 0xFF00CC44.toInt() // verde
+        }
+        binding.dotCalib.setTextColor(color)
+    }
+
+    fun updateRecordingDot(isRecording: Boolean) {
+        binding.dotRecording.setTextColor(
+            if (isRecording) 0xFFFF3300.toInt() else 0xFF333333.toInt()
+        )
     }
 
     // ─── Init N/A ─────────────────────────────────────────────────────────────
@@ -538,6 +567,7 @@ class MainActivity : AppCompatActivity() {
             if (svc.isLogging()) svc.stopLogging() else svc.startLogging()
             notifyTile()
             updateLogStatus(txtLogStatus, btnToggleLog)
+            updateRecordingDot(svc.isLogging())
         }
 
         dialogView.findViewById<android.widget.Button>(R.id.btnShowLog).setOnClickListener {

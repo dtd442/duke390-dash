@@ -19,22 +19,58 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Badge MIL/DTC — visibile solo quando MIL accesa o DTC presenti.
-         Posizionato al centro in alto, tra le due spie. -->
-    <TextView
-        android:id="@+id/spiaMil"
+    <!-- Centro barra superiore: MIL badge + pallino registrazione + pallino calibrazione -->
+    <LinearLayout
+        android:id="@+id/statusRow"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp"
-        android:paddingTop="1dp"
-        android:paddingBottom="1dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Badge MIL/DTC — visibile solo quando MIL accesa o DTC presenti -->
+        <TextView
+            android:id="@+id/spiaMil"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="6dp"
+            android:paddingTop="1dp"
+            android:paddingBottom="1dp"/>
+
+        <!-- ● Registrazione
+             #333333 = off (grigio scuro)
+             #FF3300 = on  (rosso) -->
+        <TextView
+            android:id="@+id/dotRecording"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textSize="11sp"
+            android:textColor="#333333"
+            android:paddingEnd="5dp"
+            android:contentDescription="Recording status"/>
+
+        <!-- ● Calibrazione IMU
+             #333333 = idle / non iniziata (grigio scuro)
+             #EF9F27 = in corso            (arancio)
+             #00CC44 = completata OK       (verde)
+             #FF3300 = fallita / timeout   (rosso) -->
+        <TextView
+            android:id="@+id/dotCalib"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textSize="11sp"
+            android:textColor="#333333"
+            android:contentDescription="Calibration status"/>
+
+    </LinearLayout>
 
     <TextView
         android:id="@+id/spiaObd"
