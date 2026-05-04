@@ -144,11 +144,15 @@ class DashForegroundService : Service() {
     private var accumGyro     = FloatArray(3)  // gyro bias accumulato
     private var prevMag       = FloatArray(3)  // per stabilità mag
 
-    // Buffer fase 2
-    private val s2SpeedBuf    = ArrayDeque<Float>(S2_FRAMES)
-    private val s2BearingBuf  = ArrayDeque<Float>(S2_FRAMES)
-    private val s2AccelBuf    = ArrayDeque<FloatArray>(S2_FRAMES)
-    private val s2MagBuf      = ArrayDeque<FloatArray>(S2_FRAMES)
+    // Buffer fase 2 — magnetometro non serve, si usa quello della fase 1
+    private val s2SpeedBuf   = ArrayDeque<Float>(S2_FRAMES)
+    private val s2BearingBuf = ArrayDeque<Float>(S2_FRAMES)
+    private val s2AccelBuf   = ArrayDeque<FloatArray>(S2_FRAMES)
+
+    // Magnetometro salvato dalla fase 1 — usato anche in fase 2
+    private var phase1MagX = 0f
+    private var phase1MagY = 0f
+    private var phase1MagZ = 0f
 
     // Matrice di rotazione 3×3 (row-major) — identità finché non calibrata
     private var rotMatrix     = FloatArray(9) { if (it % 4 == 0) 1f else 0f }
@@ -277,15 +281,15 @@ class DashForegroundService : Service() {
                 val magStable = if (prevMag[0] != 0f) {
                     val dMag = sqrt(
                         (imuMagX - prevMag[0]).pow(2) +
-                        (imuMagY - prevMag[1]).pow(2) +
-                        (imuMagZ - prevMag[2]).pow(2)
+                                (imuMagY - prevMag[1]).pow(2) +
+                                (imuMagZ - prevMag[2]).pow(2)
                     )
                     dMag < S1_MAG_STABLE_TOL
                 } else true  // primo frame, consideriamo stabile
 
                 val isStill = abs(accelMag - 1f) < S1_ACCEL_TOL
-                          && gyroMag            < S1_GYRO_MAX
-                          && (magStable || !gSensor.isMagReady)
+                        && gyroMag            < S1_GYRO_MAX
+                        && (magStable || !gSensor.isMagReady)
 
                 if (isStill) {
                     stillCounter++
@@ -302,10 +306,16 @@ class DashForegroundService : Service() {
                             accumM[0]/n, accumM[1]/n, accumM[2]/n
                         )
                         if (ok) {
-                            // Salva bias giroscopio
+                            // Salva bias giroscopio — più preciso a fermo
                             gyroBiasX = accumGyro[0] / n
                             gyroBiasY = accumGyro[1] / n
                             gyroBiasZ = accumGyro[2] / n
+
+                            // Salva magnetometro fase 1 — più pulito (moto ferma, niente interferenze)
+                            // Verrà usato in fase 2 al posto del magnetometro in movimento
+                            phase1MagX = accumM[0] / n
+                            phase1MagY = accumM[1] / n
+                            phase1MagZ = accumM[2] / n
 
                             currentPhase = 1
                             calibState   = CalibState.STATIC_DONE
@@ -313,7 +323,6 @@ class DashForegroundService : Service() {
                             _calibPhase.value  = 1
                             vibratePhase1()
                         } else {
-                            // Dati non validi — reset e riprova
                             resetCounters()
                             vibrateError()
                         }
@@ -338,10 +347,9 @@ class DashForegroundService : Service() {
                 s2SpeedBuf.addLast(speedKmh)
                 s2BearingBuf.addLast(bearingGps)
                 s2AccelBuf.addLast(floatArrayOf(imuGX, imuGY, imuGZ))
-                s2MagBuf.addLast(floatArrayOf(imuMagX, imuMagY, imuMagZ))
 
                 // Mantieni solo gli ultimi S2_FRAMES
-                while (s2SpeedBuf.size > S2_FRAMES)   { s2SpeedBuf.removeFirst(); s2BearingBuf.removeFirst(); s2AccelBuf.removeFirst(); s2MagBuf.removeFirst() }
+                while (s2SpeedBuf.size > S2_FRAMES) { s2SpeedBuf.removeFirst(); s2BearingBuf.removeFirst(); s2AccelBuf.removeFirst() }
 
                 if (s2SpeedBuf.size < S2_FRAMES) return  // buffer non ancora pieno
 
@@ -355,22 +363,21 @@ class DashForegroundService : Service() {
                 val yawStable     = abs(imuGyroZ - gyroBiasZ) < S2_GYRO_YAW_MAX
 
                 if (speedStable && straight && yawStable) {
-                    // Calcola media su tutto il buffer
                     val avgA = s2AccelBuf.fold(FloatArray(3)) { acc, v ->
                         floatArrayOf(acc[0]+v[0], acc[1]+v[1], acc[2]+v[2])
                     }.map { it / S2_FRAMES }
-                    val avgM = s2MagBuf.fold(FloatArray(3)) { acc, v ->
-                        floatArrayOf(acc[0]+v[0], acc[1]+v[1], acc[2]+v[2])
-                    }.map { it / S2_FRAMES }
 
+                    // Usa il magnetometro della fase 1 (moto ferma = niente interferenze)
+                    // La gravità viene aggiornata dalla posizione reale del telefono (fase 2)
+                    // Il Nord viene dalla misura più pulita (fase 1)
                     val ok = buildMatrix(
                         avgA[0], avgA[1], avgA[2],
-                        avgM[0], avgM[1], avgM[2]
+                        phase1MagX, phase1MagY, phase1MagZ
                     )
                     if (ok) {
                         currentPhase = 2
                         _calibPhase.value = 2
-                        calibState = CalibState.MOTION_CALIB  // stato finale — non ricalibra più
+                        calibState = CalibState.MOTION_CALIB
                         _calibState.value = CalibState.MOTION_CALIB
                         vibratePhase2()
                         clearS2Buffers()
@@ -401,14 +408,15 @@ class DashForegroundService : Service() {
     }
 
     private fun clearS2Buffers() {
-        s2SpeedBuf.clear(); s2BearingBuf.clear(); s2AccelBuf.clear(); s2MagBuf.clear()
+        s2SpeedBuf.clear(); s2BearingBuf.clear(); s2AccelBuf.clear()
     }
 
     fun resetCalib() {
-        calibState   = CalibState.STATIC_WAIT   // pronto per fase 1 subito
+        calibState   = CalibState.STATIC_WAIT
         currentPhase = 0
         rotMatrix    = FloatArray(9) { if (it % 4 == 0) 1f else 0f }
         gyroBiasX = 0f; gyroBiasY = 0f; gyroBiasZ = 0f
+        phase1MagX = 0f; phase1MagY = 0f; phase1MagZ = 0f
         resetCounters(); clearS2Buffers()
         prevMag = FloatArray(3)
         _calibState.value  = CalibState.STATIC_WAIT
