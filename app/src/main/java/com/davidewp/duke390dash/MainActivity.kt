@@ -587,8 +587,8 @@ class MainActivity : AppCompatActivity() {
         val editIdAnt       = dialogView.findViewById<android.widget.EditText>(R.id.editIdAnt)
         val editIdPost      = dialogView.findViewById<android.widget.EditText>(R.id.editIdPost)
         val switchMoto      = dialogView.findViewById<android.widget.Switch>(R.id.switchMotoMode)
-        val btnSetOffset    = dialogView.findViewById<android.widget.Button>(R.id.btnSetOffset)
-        val txtOffset       = dialogView.findViewById<android.widget.TextView>(R.id.txtOffsetValue)
+        //val btnSetOffset    = dialogView.findViewById<android.widget.Button>(R.id.btnSetOffset)
+        //val txtOffset       = dialogView.findViewById<android.widget.TextView>(R.id.txtOffsetValue)
         val btnToggleLog    = dialogView.findViewById<android.widget.Button>(R.id.btnToggleLog)
         val txtLogStatus    = dialogView.findViewById<android.widget.TextView>(R.id.txtLogStatus)
         val spinnerLanguage = dialogView.findViewById<android.widget.Spinner>(R.id.spinnerLanguage)
@@ -610,16 +610,7 @@ class MainActivity : AppCompatActivity() {
         editIdPost.setText(savedIdPost)
         switchMoto.isChecked = prefs.getBoolean(DashViewModel.PREF_MOTO_MODE, false)
 
-        // Offset manuale rimosso — la calibrazione è ora automatica (fase 1 + fase 2)
-        txtOffset.text = "calib: phase ${dashService?.getCalibPhase() ?: 0}"
-        btnSetOffset.visibility = android.view.View.GONE
-        txtOffset.visibility    = android.view.View.VISIBLE
 
-        updateLogStatus(txtLogStatus, btnToggleLog)
-
-        btnSetOffset.setOnClickListener {
-            // Offset manuale rimosso — pulsante nascosto, questo handler non viene mai chiamato
-        }
 
         btnToggleLog.setOnClickListener {
             val svc = dashService

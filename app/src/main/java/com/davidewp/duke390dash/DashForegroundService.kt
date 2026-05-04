@@ -190,7 +190,7 @@ class DashForegroundService : Service() {
     ): Boolean {
 
         // ── IMPOSTAZIONI DI INVERSIONE RAPIDA ──────────────────────────────────
-        val invertiDestraSinistra = true  // Cambia in false se la piega è invertita
+        val invertiDestraSinistra = false  // Cambia in false se la piega è invertita
         val invertiAvantiDietro   = false // Cambia in true se accel/freno sono invertiti
         // ───────────────────────────────────────────────────────────────────────
 
