@@ -19,6 +19,7 @@ import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.ProgressBar
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -79,6 +80,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ── Intercetta back/gesture back — non uscire mai dall'app ────────────
+        // Come home app, il back non deve fare nulla (o al massimo tornare
+        // alla schermata principale se siamo in un sotto-schermo).
+        onBackPressedDispatcher.addCallback(this,
+            object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    // Non fare nulla — siamo la home, non c'è "indietro"
+                    // Se in futuro hai sotto-schermi, naviga lì invece di uscire
+                }
+            }
+        )
 
         // ── Schermo sempre acceso, no lock, no standby ────────────────────────
         // FLAG_KEEP_SCREEN_ON non è deprecato — gli altri sì, sostituiti con API moderne
@@ -181,6 +194,13 @@ class MainActivity : AppCompatActivity() {
         hideSystemBars()
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Ri-scheduliamo hideSystemBars per quando torniamo in primo piano —
+        // il post delay dà tempo al sistema di completare la transizione
+        window.decorView.postDelayed({ hideSystemBars() }, 300)
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && !sweepDone) runSweep()
@@ -192,7 +212,14 @@ class MainActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             hide(WindowInsetsCompat.Type.navigationBars())
             hide(WindowInsetsCompat.Type.statusBars())
+            // BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE: le barre appaiono temporaneamente
+            // con un swipe ma NON triggera il task switcher — corretto per una home app
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        // Mantieni il layout under notch/cutout
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
     }
 
