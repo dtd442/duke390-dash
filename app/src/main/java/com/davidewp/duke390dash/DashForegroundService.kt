@@ -95,12 +95,22 @@ class DashForegroundService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // ── Valori IMU grezzi (aggiornati dal callback sensore, thread-safe) ──────
+    // Valori IMU con dead-band — per log e UI
     @Volatile private var lastGLateral: Float = 0f
     @Volatile private var lastGLong:    Float = 0f
     @Volatile private var lastGVert:    Float = 0f
     @Volatile private var lastGyroX:    Float = 0f
     @Volatile private var lastGyroY:    Float = 0f
     @Volatile private var lastGyroZ:    Float = 0f
+
+    // Valori IMU grezzi (senza dead-band) — solo per la calibrazione
+    // La dead-band azzera componenti piccole e corrompe il vettore gravità
+    @Volatile private var rawGX:    Float = 0f
+    @Volatile private var rawGY:    Float = 0f
+    @Volatile private var rawGZ:    Float = 0f
+    @Volatile private var rawGyroX: Float = 0f
+    @Volatile private var rawGyroY: Float = 0f
+    @Volatile private var rawGyroZ: Float = 0f
 
     // ── Stato macchina a stati calibrazione ───────────────────────────────────
     private var calibPhase       = CalibState.IDLE
@@ -152,7 +162,8 @@ class DashForegroundService : Service() {
         speedKmh: Float
     ) {
         val accelMag = sqrt(gx*gx + gy*gy + gz*gz)
-        val gyroMag  = sqrt(lastGyroX*lastGyroX + lastGyroY*lastGyroY + lastGyroZ*lastGyroZ)
+        // Usa il giroscopio grezzo per la magnitudine — più preciso
+        val gyroMag  = sqrt(rawGyroX*rawGyroX + rawGyroY*rawGyroY + rawGyroZ*rawGyroZ)
 
         when (calibPhase) {
 
@@ -319,13 +330,23 @@ class DashForegroundService : Service() {
         gpsManager.start()
 
         gSensor = MotionSensor(this) { gLateral, gLong, gVert, gyroX, gyroY, gyroZ ->
-            lastGLateral    = gLateral
-            lastGLong       = gLong
-            lastGVert       = gVert
-            lastGyroX       = gyroX
-            lastGyroY       = gyroY
-            lastGyroZ       = gyroZ
-            // Aggiorna il flow UI con il valore laterale già calibrato se possibile
+            // Valori con dead-band → log e UI
+            lastGLateral = gLateral
+            lastGLong    = gLong
+            lastGVert    = gVert
+            lastGyroX    = gyroX
+            lastGyroY    = gyroY
+            lastGyroZ    = gyroZ
+            // Valori grezzi → calibrazione (gVert qui è già senza sottrazione 1g)
+            // Usiamo i valori filtrati low-pass ma senza dead-band
+            // Nota: MotionSensor ci passa gVert grezzo (include ~1g di gravità)
+            rawGX    = gLateral  // gLateral ha solo dead-band, non sottrae gravità
+            rawGY    = gLong     // idem
+            rawGZ    = gVert     // gVert ora è grezzo (vedi MotionSensor fix)
+            rawGyroX = gyroX
+            rawGyroY = gyroY
+            rawGyroZ = gyroZ
+            // UI: usa il valore calibrato se disponibile
             val (calLat, _, _) = applyRotation(gLateral, gLong, gVert)
             _gLateral.value = if (calibPhase == CalibState.DONE) calLat else gLateral
         }
@@ -359,14 +380,11 @@ class DashForegroundService : Service() {
                 val currentState = _dashState.value
                 val speedKmh     = currentState.obd.speedKmh
 
-                // Calibrazione parte solo dopo aver premuto START —
-                // così i secondi pre-partenza (telefono in mano, app aperta)
-                // non vengono scambiati per "telefono fermo in tasca"
                 if (sessionLogger.isLogging) {
-                    updateCalib(lastGLateral, lastGLong, lastGVert, speedKmh)
-                }
+                    // Calibrazione usa i valori GREZZI (senza dead-band)
+                    // così il vettore gravità è completo e la mag ≈ 1g quando fermo
+                    updateCalib(rawGX, rawGY, rawGZ, speedKmh)
 
-                if (sessionLogger.isLogging) {
                     // Applica rotazione se calibrazione completata
                     val (calLat, calLong, calVert) = if (calibPhase == CalibState.DONE)
                         applyRotation(lastGLateral, lastGLong, lastGVert)

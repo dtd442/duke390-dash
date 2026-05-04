@@ -8,34 +8,33 @@ import android.hardware.SensorManager
 import kotlin.math.abs
 
 /**
- * Legge accelerometro (G laterale) + giroscopio (tutti e 3 gli assi).
+ * Legge accelerometro (tutti e 3 gli assi) + giroscopio (tutti e 3 gli assi).
  *
  * Assi Android (telefono verticale, schermo verso di te):
- *   X → destra/sinistra  (laterale sul manubrio)
- *   Y → su/giù           (beccheggio: accelerazione/frenata)
- *   Z → verso/da te      (imbardata: rotazione attorno asse verticale)
+ *   X → destra/sinistra  (laterale)
+ *   Y → su/giù           (longitudinale: accelerazione/frenata)
+ *   Z → verso/da te      (verticale: dossi, buche)
  *
- * Accelerometro — asse X con low-pass alpha=0.05 + dead-band ±0.15g
+ * Il callback espone:
+ *   gLateral  = X normalizzato in g, offset-corrected, dead-band
+ *   gLong     = Y normalizzato in g, dead-band
+ *   gVert     = Z normalizzato in g GREZZO (non sottratto 1g) — usato per calibrazione
+ *               Il viewer/service sottrae 1g se serve lo scostamento
+ *   gyroX/Y/Z = rad/s filtrati, dead-band
  *
- * Giroscopio — tutti e 3 gli assi in rad/s, low-pass alpha=0.10
- *   gyroX: roll  (rotolamento — utile per lean angle sul manubrio)
- *   gyroY: pitch (beccheggio — accelerazione/frenata)
- *   gyroZ: yaw   (imbardata — cambio direzione)
- *   Dead-band ±0.02 rad/s per stabilità a fermo.
- *
- * Il telefono può essere in tasca o sul manubrio — si salvano tutti gli assi
- * grezzi nel JSON così in post-processing si può scegliere quale usare
- * in base all'orientamento.
+ * NOTA: gVert viene loggato come valore assoluto (include 1g di gravità).
+ * Questo permette alla calibrazione di leggere il vettore gravità completo.
+ * Per dossi/buche nel viewer: gVert_dosso = gVert - 1.0
  */
 class MotionSensor(
     private val context: Context,
     private val onUpdate: (
-        gLateral: Float,    // accel X
-        gLong: Float,       // accel Y ← nuovo (beccheggio: frena/accelera)
-        gVert: Float,       // accel Z ← nuovo (verticale: dossi, buche)
-        gyroX: Float,
-        gyroY: Float,
-        gyroZ: Float
+        gLateral: Float,
+        gLong:    Float,
+        gVert:    Float,   // GREZZO — include gravità (≈1g quando fermo)
+        gyroX:    Float,
+        gyroY:    Float,
+        gyroZ:    Float
     ) -> Unit
 ) : SensorEventListener {
 
@@ -54,13 +53,11 @@ class MotionSensor(
     private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gyroscope     = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-    // Accelerometro
     private var filteredX = 0f
-    private var filteredY = 0f  // ← nuovo
-    private var filteredZ = 0f  // ← nuovo
+    private var filteredY = 0f
+    private var filteredZ = 0f
     private var offset    = 0f
 
-    // Giroscopio — tutti e 3 gli assi filtrati
     private var filteredGyroX = 0f
     private var filteredGyroY = 0f
     private var filteredGyroZ = 0f
@@ -80,7 +77,6 @@ class MotionSensor(
         sensorManager.unregisterListener(this)
     }
 
-    /** Salva il valore attuale come offset di calibrazione. */
     fun setOffset() {
         offset = filteredX
         context.getSharedPreferences(DashViewModel.PREFS_NAME, Context.MODE_PRIVATE)
@@ -96,22 +92,26 @@ class MotionSensor(
             .getFloat(PREFS_KEY_OFFSET, 0f)
     }
 
-    // ── Calcola gLateral dal filteredX corrente ───────────────────────────────
     private fun currentGLateral(): Float {
         val g = (filteredX - offset) / SensorManager.GRAVITY_EARTH
         return if (abs(g) < ACCEL_DEADBAND) 0f else g
     }
+
     private fun currentGLong(): Float {
         val g = filteredY / SensorManager.GRAVITY_EARTH
         return if (abs(g) < ACCEL_DEADBAND) 0f else g
     }
 
-    private fun currentGVert(): Float {
-        // In condizioni normali Z ≈ 1g (gravità) — sottrai 1 per avere lo scostamento
-        val g = (filteredZ / SensorManager.GRAVITY_EARTH) - 1f
-        return if (abs(g) < ACCEL_DEADBAND) 0f else g
-    }
-    // ── Dead-band giroscopio ──────────────────────────────────────────────────
+    /**
+     * gVert GREZZO — valore assoluto in g, include la componente gravitazionale.
+     * Quando il telefono è fermo ≈ ±1g a seconda dell'orientamento.
+     * NON applica dead-band perché la calibrazione ha bisogno del valore reale.
+     *
+     * Per rilevare dossi/buche nel viewer: scostamento = gVert - sign(gVert)*1.0
+     */
+    private fun currentGVert(): Float =
+        filteredZ / SensorManager.GRAVITY_EARTH
+
     private fun applyGyroBand(v: Float) = if (abs(v) < GYRO_DEADBAND) 0f else v
 
     override fun onSensorChanged(event: SensorEvent) {
