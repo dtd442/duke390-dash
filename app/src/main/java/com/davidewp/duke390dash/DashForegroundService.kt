@@ -34,7 +34,7 @@ class DashForegroundService : Service() {
 
     // ── Calibrazione IMU ──────────────────────────────────────────────────────
 
-    enum class CalibState { WAITING_STILL, WAITING_MOVE, CALIBRATING, DONE }
+    enum class CalibState { IDLE, WAITING_STILL, WAITING_MOVE, CALIBRATING, DONE }
 
     companion object {
         const val CHANNEL_ID      = "duke390_dash_channel"
@@ -103,7 +103,7 @@ class DashForegroundService : Service() {
     @Volatile private var lastGyroZ:    Float = 0f
 
     // ── Stato macchina a stati calibrazione ───────────────────────────────────
-    private var calibPhase       = CalibState.WAITING_STILL
+    private var calibPhase       = CalibState.IDLE
     private var stillCounter     = 0
     private var calibCounter     = 0
     private var accumGX          = 0f
@@ -155,6 +155,19 @@ class DashForegroundService : Service() {
         val gyroMag  = sqrt(lastGyroX*lastGyroX + lastGyroY*lastGyroY + lastGyroZ*lastGyroZ)
 
         when (calibPhase) {
+
+            CalibState.IDLE -> {
+                // Aspetta che la moto si muova almeno una volta —
+                // questo garantisce che START è stato premuto (siamo qui)
+                // E che la moto è partita (telefono è già in tasca/zaino)
+                if (speedKmh >= CALIB_MOVE_SPEED_KMH) {
+                    // La moto si è mossa — da ora aspettiamo che si fermi/stabilizzi
+                    // per rilevare il telefono fermo in tasca
+                    calibPhase = CalibState.WAITING_STILL
+                    stillCounter = 0
+                    _calibState.value = CalibState.WAITING_STILL
+                }
+            }
 
             CalibState.WAITING_STILL -> {
                 // Telefono fermo: |acc| ≈ 1g (solo gravità), giroscopio silenzioso
@@ -271,11 +284,11 @@ class DashForegroundService : Service() {
 
     /** Forza il reset della calibrazione — riparte da WAITING_STILL */
     fun resetCalib() {
-        calibPhase   = CalibState.WAITING_STILL
+        calibPhase   = CalibState.IDLE
         stillCounter = 0; calibCounter = 0
         accumGX = 0f; accumGY = 0f; accumGZ = 0f
         rotMatrix = floatArrayOf(1f,0f,0f, 0f,1f,0f, 0f,0f,1f)
-        _calibState.value = CalibState.WAITING_STILL
+        _calibState.value = CalibState.IDLE
     }
 
     fun getCalibState(): CalibState = calibPhase
@@ -346,8 +359,12 @@ class DashForegroundService : Service() {
                 val currentState = _dashState.value
                 val speedKmh     = currentState.obd.speedKmh
 
-                // Aggiorna calibrazione ad ogni tick
-                updateCalib(lastGLateral, lastGLong, lastGVert, speedKmh)
+                // Calibrazione parte solo dopo aver premuto START —
+                // così i secondi pre-partenza (telefono in mano, app aperta)
+                // non vengono scambiati per "telefono fermo in tasca"
+                if (sessionLogger.isLogging) {
+                    updateCalib(lastGLateral, lastGLong, lastGVert, speedKmh)
+                }
 
                 if (sessionLogger.isLogging) {
                     // Applica rotazione se calibrazione completata
@@ -380,6 +397,9 @@ class DashForegroundService : Service() {
     // ── API pubblica ──────────────────────────────────────────────────────────
 
     fun startLogging() {
+        // Reset calibrazione ad ogni nuova sessione —
+        // riparte da WAITING_STILL al momento del tasto START
+        resetCalib()
         sessionLogger.startSession()
         _isLoggingState = sessionLogger.isLogging
     }
