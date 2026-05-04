@@ -27,7 +27,7 @@ import kotlin.math.abs
  * grezzi nel JSON così in post-processing si può scegliere quale usare
  * in base all'orientamento.
  */
-class GSensor(
+class MotionSensor(
     private val context: Context,
     private val onUpdate: (
         gLateral: Float,    // accel X
