@@ -155,11 +155,7 @@ class DashForegroundService : Service() {
         speedKmh: Float
     ) {
         val accelMag = sqrt(gx*gx + gy*gy + gz*gz)
-        val gyroMag  = sqrt(
-            gSensor.calibGyroX * gSensor.calibGyroX +
-                    gSensor.calibGyroY * gSensor.calibGyroY +
-                    gSensor.calibGyroZ * gSensor.calibGyroZ
-        )
+        val gyroMag  = sqrt(lastGyroX*lastGyroX + lastGyroY*lastGyroY + lastGyroZ*lastGyroZ)
 
         when (calibPhase) {
 
@@ -368,12 +364,11 @@ class DashForegroundService : Service() {
                 val speedKmh     = currentState.obd.speedKmh
 
                 if (sessionLogger.isLogging) {
-                    // Calibrazione legge direttamente i valori filtrati senza dead-band
-                    // dal sensore — più precisi dei valori copiati nel callback
-                    updateCalib(
-                        gSensor.calibGX, gSensor.calibGY, gSensor.calibGZ,
-                        speedKmh
-                    )
+                    // Calibrazione usa gli STESSI valori che finiscono nel log
+                    // (lastGLateral/Long/Vert) — così matrice e dati sono coerenti.
+                    // NON usare gSensor.calibGX che include l'offset manuale del sensore
+                    // mentre lastGLateral lo ha già sottratto → mismatch matrice/log.
+                    updateCalib(lastGLateral, lastGLong, lastGVert, speedKmh)
 
                     // Applica rotazione se calibrazione completata
                     val (calLat, calLong, calVertRaw) = if (calibPhase == CalibState.DONE)
@@ -382,9 +377,12 @@ class DashForegroundService : Service() {
                         Triple(lastGLateral, lastGLong, lastGVert)
 
                     // gVert nel JSON = scostamento da piano (0=piano, +dosso, -buca)
-                    // Dopo la rotazione calVertRaw ≈ 1g in piano → sottraiamo 1g
-                    // Prima della calibrazione il valore è grezzo e non significativo
-                    val calVert = if (calibPhase == CalibState.DONE) calVertRaw - 1f else calVertRaw
+                    // Dopo la rotazione |calVertRaw| ≈ 1g in piano
+                    // Sottraiamo la componente gravitazionale con il segno corretto
+                    val calVert = if (calibPhase == CalibState.DONE)
+                        calVertRaw - kotlin.math.sign(calVertRaw) * 1f
+                    else
+                        calVertRaw
 
                     val (calGyroX, calGyroY, calGyroZ) = if (calibPhase == CalibState.DONE)
                         applyRotation(lastGyroX, lastGyroY, lastGyroZ)
