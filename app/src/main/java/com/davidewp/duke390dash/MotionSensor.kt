@@ -47,21 +47,31 @@ class MotionSensor(
 
     private val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-    private val accelSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-    private val gyroSensor  = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-    private val magSensor   = sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+    private val accelSensor   = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val gyroSensor    = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+    private val magSensor     = sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+    private val gravitySensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY) // filtrato HW, solo gravità
 
-    private var aX = 0f; private var aY = 0f; private var aZ = 0f
+    private var aX = 0f; private var aY = 0f; private var aZ = 0f  // accelerometro grezzo
+    private var grX = 0f; private var grY = 0f; private var grZ = 0f // gravity (filtrato HW)
     private var gX = 0f; private var gY = 0f; private var gZ = 0f
     private var mX = 0f; private var mY = 0f; private var mZ = 0f
 
-    private var _magReady = false
-    val isMagReady: Boolean get() = _magReady
+    private var _magReady     = false
+    private var _gravityReady = false
+    val isMagReady:     Boolean get() = _magReady
+    val isGravityReady: Boolean get() = _gravityReady
+
+    // Per la calibrazione: usa gravity se disponibile, altrimenti accelerometro
+    val calibGX: Float get() = if (_gravityReady) grX / SensorManager.GRAVITY_EARTH else aX / SensorManager.GRAVITY_EARTH
+    val calibGY: Float get() = if (_gravityReady) grY / SensorManager.GRAVITY_EARTH else aY / SensorManager.GRAVITY_EARTH
+    val calibGZ: Float get() = if (_gravityReady) grZ / SensorManager.GRAVITY_EARTH else aZ / SensorManager.GRAVITY_EARTH
 
     fun start() {
-        accelSensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
-        gyroSensor?.let  { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
-        magSensor?.let   { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        accelSensor?.let   { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        gyroSensor?.let    { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        magSensor?.let     { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        gravitySensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
     }
 
     fun stop() = sm.unregisterListener(this)
@@ -72,6 +82,11 @@ class MotionSensor(
                 aX = lerp(aX, event.values[0], ACCEL_ALPHA)
                 aY = lerp(aY, event.values[1], ACCEL_ALPHA)
                 aZ = lerp(aZ, event.values[2], ACCEL_ALPHA)
+            }
+            Sensor.TYPE_GRAVITY -> {
+                // Filtrato dall'hardware — solo componente gravitazionale, niente vibrazioni
+                grX = event.values[0]; grY = event.values[1]; grZ = event.values[2]
+                _gravityReady = true
             }
             Sensor.TYPE_GYROSCOPE -> {
                 gX = lerp(gX, event.values[0], GYRO_ALPHA)

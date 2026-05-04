@@ -289,8 +289,9 @@ class DashForegroundService : Service() {
 
                 if (isStill) {
                     stillCounter++
-                    // Accumula per fare la media
-                    accumA[0] += imuGX;    accumA[1] += imuGY;    accumA[2] += imuGZ
+                    // Usa calibGX/Y/Z che preferisce TYPE_GRAVITY (filtrato HW)
+                    // rispetto all'accelerometro grezzo — più stabile con moto al minimo
+                    accumA[0] += gSensor.calibGX; accumA[1] += gSensor.calibGY; accumA[2] += gSensor.calibGZ
                     accumM[0] += imuMagX;  accumM[1] += imuMagY;  accumM[2] += imuMagZ
                     accumGyro[0] += imuGyroX; accumGyro[1] += imuGyroY; accumGyro[2] += imuGyroZ
 
@@ -369,8 +370,10 @@ class DashForegroundService : Service() {
                     if (ok) {
                         currentPhase = 2
                         _calibPhase.value = 2
+                        calibState = CalibState.MOTION_CALIB  // stato finale — non ricalibra più
+                        _calibState.value = CalibState.MOTION_CALIB
                         vibratePhase2()
-                        clearS2Buffers()  // resetta per prossima calibrazione
+                        clearS2Buffers()
                     }
                 }
                 // Se le condizioni non sono soddisfatte il buffer scorre — nessun reset,
@@ -514,7 +517,8 @@ class DashForegroundService : Service() {
                         gyroY      = calGyroY,
                         gyroZ      = calGyroZ,
                         gps        = gps,
-                        calibDone  = currentPhase >= 1
+                        calibDone  = currentPhase >= 1,
+                        calibPhase = currentPhase
                     )
                 }
             }

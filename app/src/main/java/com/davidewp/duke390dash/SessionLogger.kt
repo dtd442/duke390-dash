@@ -100,13 +100,14 @@ class SessionLogger(private val context: Context) {
         gyroY:      Float = 0f,
         gyroZ:      Float = 0f,
         gps:        GpsManager.GpsData = GpsManager.GpsData(),
-        calibDone:  Boolean = false     // true = dati IMU già ruotati negli assi della moto
+        calibDone:  Boolean = false,
+        calibPhase: Int     = 0         // 0=nessuna, 1=statica, 2=motion
     ) {
         if (!isLogging) return
         val ts = tsSdf.format(Date())
         try {
             writeCsvRow(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps)
-            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps, calibDone)
+            writeJsonEntry(ts, state, gLateral, gLong, gVert, gyroX, gyroY, gyroZ, gps, calibDone, calibPhase)
         } catch (e: Exception) {
             Log.e(TAG, "Errore scrittura log: ${e.message}")
         }
@@ -162,7 +163,8 @@ class SessionLogger(private val context: Context) {
         gLateral: Float, gLong: Float, gVert: Float,
         gyroX: Float, gyroY: Float, gyroZ: Float,
         gps: GpsManager.GpsData,
-        calibDone: Boolean = false
+        calibDone:  Boolean = false,
+        calibPhase: Int     = 0
     ) {
         val ant  = state.tpmsAnt
         val post = state.tpmsPost
@@ -214,7 +216,8 @@ class SessionLogger(private val context: Context) {
                 put("gps_speed_kmh",  gps.speedKmh)
                 put("gps_accuracy_m", gps.accuracyM)
                 put("gps_available",  gps.available)
-                put("calib_done",     calibDone)     // true = IMU ruotata negli assi moto
+                put("calib_done",     calibDone)
+                put("calib_phase",    calibPhase)  // 0=nessuna 1=statica 2=motion
             })
         }
 
