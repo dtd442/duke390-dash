@@ -75,6 +75,9 @@ class LeanAngleSensor(
         SensorManager.getOrientation(rotationMatrix, orientation)
         currentRaw = Math.toDegrees(orientation[2].toDouble()).toFloat()
 
+        // Corregge il wrap 0–360 → -180/+180
+        if (currentRaw > 180f) currentRaw -= 360f
+
         // Calibrazione (media di 60 campioni)
         if (isCalibrating) {
             calibSamples.add(currentRaw)
@@ -92,8 +95,11 @@ class LeanAngleSensor(
         val corrected = currentRaw - rollOffset
         filteredRoll = filteredRoll * 0.9f + corrected * 0.1f
 
+        // INVERSIONE SEGNO → sinistra = negativo → barra sinistra
+        val finalRoll = -filteredRoll
+
         // Callback verso la UI
-        onLeanUpdate(filteredRoll)
+        onLeanUpdate(finalRoll)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
