@@ -41,7 +41,7 @@ class SessionLogger(private val context: Context) {
 
         try {
             csvOutputStream  = openOutputStream("$sessionName.csv",  "text/csv")
-            jsonOutputStream = openOutputStream("$sessionName.json", "text/plain")
+            jsonOutputStream = openOutputStream("$sessionName.json", "text/application/octet-stream")
 
             val header = "timestamp," +
                     "ant_pressure_bar,ant_temp_c,ant_battery_pct,ant_alarm," +
