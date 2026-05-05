@@ -1,5 +1,6 @@
 package com.davidewp.duke390dash
 
+import android.view.View
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
@@ -228,7 +229,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-
+    /*originale
     @SuppressLint("SetTextI18n")
     private fun updateLeanFromRotationVector(roll: Float) {
         val absAngle = kotlin.math.abs(roll)
@@ -256,6 +257,49 @@ class MainActivity : AppCompatActivity() {
 
         setBarColor(binding.barLeanLeft, color)
         setBarColor(binding.barLeanRight, color)
+    }
+    */
+    //da copilot
+    @SuppressLint("SetTextI18n")
+    private fun updateLeanFromRotationVector(roll: Float) {
+
+        val angle = roll.toInt().coerceIn(-60, 60)
+
+        // Aggiorna numero centrale
+        binding.valLeanAngle.text = "${kotlin.math.abs(angle)}°"
+
+        // Colore dinamico
+        val color = when {
+            kotlin.math.abs(angle) < 20 -> 0xFF00CC44.toInt() // verde
+            kotlin.math.abs(angle) < 40 -> 0xFFEF9F27.toInt() // arancio
+            else -> 0xFFFF3300.toInt() // rosso
+        }
+        binding.valLeanAngle.setTextColor(color)
+
+        if (angle < 0) {
+            // SINISTRA
+            binding.barLeanLeft.progress = -angle
+            binding.barLeanRight.progress = 0
+
+            binding.valLeanSide.visibility = View.VISIBLE
+            binding.valLeanSideRight.visibility = View.INVISIBLE
+
+        } else if (angle > 0) {
+            // DESTRA
+            binding.barLeanRight.progress = angle
+            binding.barLeanLeft.progress = 0
+
+            binding.valLeanSide.visibility = View.INVISIBLE
+            binding.valLeanSideRight.visibility = View.VISIBLE
+
+        } else {
+            // DRITTO
+            binding.barLeanLeft.progress = 0
+            binding.barLeanRight.progress = 0
+
+            binding.valLeanSide.visibility = View.INVISIBLE
+            binding.valLeanSideRight.visibility = View.INVISIBLE
+        }
     }
 
 

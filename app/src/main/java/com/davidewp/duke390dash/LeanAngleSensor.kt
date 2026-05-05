@@ -11,95 +11,60 @@ class LeanAngleSensor(
     private val onLeanUpdate: (rollDeg: Float) -> Unit
 ) : SensorEventListener {
 
-    companion object {
-        private const val CALIB_SAMPLES = 60
-    }
+    private val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val acc = sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
 
-    private val sm        = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val rotSensor = sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+    private val R = FloatArray(16)
+    private val I = FloatArray(16)
+    private val outR = FloatArray(16)
+    private val LOC = FloatArray(3)
+    private val MAG = floatArrayOf(1f, 1f, 1f)
 
-    private val rotationMatrix = FloatArray(9)
-    private val orientation    = FloatArray(3)
+    private var filtered = 0f
 
-    private var rollOffset         = 0f
-    private var currentRaw         = 0f
-    private var filteredRoll       = 0f
-    private var isCalibrating      = false
-    private val calibSamples       = mutableListOf<Float>()
-    private var onCalibrationDone: (() -> Unit)? = null
-
-    private var lastUpdate = 0L
-
-    // ─────────────────────────────────────────────────────────────────────────
+    // 👉 offset per la calibrazione
+    private var offset = 0f
 
     fun start() {
-        rotSensor?.let {
-            sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        }
+        sm.registerListener(this, acc, SensorManager.SENSOR_DELAY_GAME)
     }
 
     fun stop() {
         sm.unregisterListener(this)
-        rollOffset    = 0f
-        isCalibrating = false
-        calibSamples.clear()
-        filteredRoll  = 0f
     }
 
+    // 👉 funzione richiesta dal tuo MainActivity
     fun calibrate() {
-        rollOffset = currentRaw
+        offset = filtered   // salva l’angolo attuale come zero
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type != Sensor.TYPE_GAME_ROTATION_VECTOR) return
 
-        // Limita aggiornamenti a ~60Hz
-        val now = System.currentTimeMillis()
-        if (now - lastUpdate < 16) return
-        lastUpdate = now
+        SensorManager.getRotationMatrixFromVector(R, event.values)
 
-        // Ottieni rotation matrix dal rotation vector
-        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-
-        // REMAP per telefono in VERTICALE (portrait)
+        // Rimappatura per PORTRAIT
         SensorManager.remapCoordinateSystem(
-            rotationMatrix,
-            SensorManager.AXIS_X,   // asse laterale del telefono
-            SensorManager.AXIS_Z,   // asse verticale
-            rotationMatrix
+            R,
+            SensorManager.AXIS_Y,
+            SensorManager.AXIS_MINUS_X,
+            outR
         )
 
-        // Ottieni angoli (radians → degrees)
-        SensorManager.getOrientation(rotationMatrix, orientation)
-        currentRaw = Math.toDegrees(orientation[2].toDouble()).toFloat()
+        SensorManager.getOrientation(outR, LOC)
 
-        // Corregge il wrap 0–360 → -180/+180
-        if (currentRaw > 180f) currentRaw -= 360f
+        // SOLO PITCH (piega SX/DX)
+        var pitch = Math.toDegrees(LOC[1].toDouble()).toFloat()
 
-        // Calibrazione (media di 60 campioni)
-        if (isCalibrating) {
-            calibSamples.add(currentRaw)
-            if (calibSamples.size >= CALIB_SAMPLES) {
-                rollOffset    = calibSamples.average().toFloat()
-                isCalibrating = false
-                calibSamples.clear()
-                onCalibrationDone?.invoke()
-                onCalibrationDone = null
-            }
-            return
-        }
+        if (pitch > 180f) pitch -= 360f
 
-        // LOW-PASS FILTER — elimina jitter e oscillazioni
-        val corrected = currentRaw - rollOffset
-        filteredRoll = filteredRoll * 0.9f + corrected * 0.1f
+        // Applica offset di calibrazione
+        pitch -= offset
 
-        // INVERSIONE SEGNO → sinistra = negativo → barra sinistra
-        val finalRoll = -filteredRoll
+        // Smoothing
+        filtered = filtered * 0.85f + pitch * 0.15f
 
-        // Callback verso la UI
-        onLeanUpdate(finalRoll)
+        onLeanUpdate(filtered)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
