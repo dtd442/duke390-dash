@@ -164,43 +164,6 @@
             </LinearLayout>
 
             <!-- G OFFSET -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="12dp"
-                android:gravity="center_vertical">
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/settings_g_offset"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp"
-                        android:textStyle="bold"/>
-                    <TextView
-                        android:id="@+id/txtOffsetValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/settings_g_offset_value"
-                        android:textColor="#AAAAAA"
-                        android:textSize="10sp"/>
-                </LinearLayout>
-                <Button
-                    android:id="@+id/btnSetOffset"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/btn_set_offset"
-                    android:textColor="#FFFFFF"
-                    android:textSize="11sp"
-                    android:background="#333333"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"/>
-            </LinearLayout>
 
             <!-- TELEMETRIA -->
             <LinearLayout
@@ -242,27 +205,44 @@
             </LinearLayout>
 
             <!-- LOG -->
-            <Button
-                android:id="@+id/btnShowLog"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:text="📋 LOG CONNESSIONI"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp"
-                android:background="#1A2A1A"/>
+                android:orientation="horizontal"
+                android:padding="8dp"
+                android:weightSum="2">
 
-            <!-- ANALIZZATORE -->
-            <Button
-                android:id="@+id/btnOpenAnalyzer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/btn_open_analyzer"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp"
-                android:letterSpacing="0.05"
-                android:background="#1A1A4A"
-                android:drawableStart="@android:drawable/ic_menu_compass"/>
+                <!-- PULSANTE LOG -->
+                <Button
+                    android:id="@+id/btnShowLog"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:backgroundTint="#1A2A1A"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="📋 LOG CONNESSIONI"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp" />
+
+                <!-- PULSANTE ANALIZZATORE -->
+                <Button
+                    android:id="@+id/btnOpenAnalyzer"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:backgroundTint="#1A1A4A"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:drawableStart="@android:drawable/ic_menu_compass"
+                    android:paddingStart="8dp"
+                    android:text="@string/btn_open_analyzer"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp" />
+
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>

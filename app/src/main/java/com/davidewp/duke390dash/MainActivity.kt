@@ -39,7 +39,9 @@ class MainActivity : AppCompatActivity() {
     private var dashService: DashForegroundService? = null
     private var serviceBound = false
 
+
     private val serviceConnection = object : ServiceConnection {
+
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val binderService = (binder as DashForegroundService.LocalBinder).getService()
             dashService = binderService
