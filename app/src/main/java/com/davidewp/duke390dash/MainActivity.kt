@@ -93,27 +93,27 @@ class MainActivity : AppCompatActivity() {
     ) { _ ->
         // Manager già avviati nel service — nessuna init aggiuntiva necessaria
     }
+    private lateinit var leanSensor: LeanAngleSensor
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            android.util.Log.e("CRASH", "═══ UNCAUGHT EXCEPTION ═══")
+            android.util.Log.e("CRASH", "Thread: ${thread.name}")
+            android.util.Log.e("CRASH", "Message: ${throwable.message}")
+            android.util.Log.e("CRASH", "Stacktrace:", throwable)
+            Thread.sleep(500)
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
         super.onCreate(savedInstanceState)
 
-        // ── Intercetta back/gesture back — non uscire mai dall'app ────────────
-        // Come home app, il back non deve fare nulla (o al massimo tornare
-        // alla schermata principale se siamo in un sotto-schermo).
         onBackPressedDispatcher.addCallback(this,
             object : androidx.activity.OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    // Non fare nulla — siamo la home, non c'è "indietro"
-                    // Se in futuro hai sotto-schermi, naviga lì invece di uscire
-                }
+                override fun handleOnBackPressed() { }
             }
         )
 
-        // ── Schermo sempre acceso, no lock, no standby ────────────────────────
-        // FLAG_KEEP_SCREEN_ON non è deprecato — gli altri sì, sostituiti con API moderne
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // API moderne per show-when-locked e turn-screen-on (deprecano i vecchi FLAG_*)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -135,10 +135,6 @@ class MainActivity : AppCompatActivity() {
             Context.BIND_AUTO_CREATE
         )
 
-        // ── Fullscreen — le barre escono solo con swipe doppio (come prima) ───
-        // BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE: il primo swipe mostra le barre
-        // in modalità transitoria, il secondo le "sblocca" — comportamento identico
-        // a quello originale dell'app.
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -153,21 +149,33 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-// Inserisci questo nel onCreate della tua MainActivity dopo setContentView
+
+        leanSensor = LeanAngleSensor(this) { roll ->
+            DashForegroundService.currentLeanAngle = roll
+            runOnUiThread { updateLeanFromRotationVector(roll) }
+        }
+        leanSensor?.start()
+
+        // DASH LOGGER — calibra + avvia logging
         binding.btnStartOverlay.setOnClickListener {
-            if (serviceBound) { // <--- Usiamo il tuo "serviceBound"
+            if (serviceBound) {
+                leanSensor?.calibrate()
                 dashService?.startLogging()
-
-                // Aggiorna il pallino rosso (REC) sulla UI
                 updateRecordingDot(true)
-
-                // Nasconde l'overlay per mostrare la dashboard
                 binding.overlayStart.visibility = android.view.View.GONE
-
-                // Notifica il Tile di sistema che stiamo registrando
                 notifyTile()
             }
         }
+
+// ONLY DASH — calibra senza logging
+        binding.btnOnlyDash.setOnClickListener {
+            if (serviceBound) {
+                leanSensor?.calibrate()
+                binding.overlayStart.visibility = android.view.View.GONE
+                notifyTile()
+            }
+        }
+
         AppLog.add("MainActivity", "App avviata")
         initNa()
 
@@ -178,9 +186,6 @@ class MainActivity : AppCompatActivity() {
             android.Manifest.permission.POST_NOTIFICATIONS
         ))
 
-        // ── Long press a 3 dita ───────────────────────────────────────────────
-        // return true: consuma l'evento così il sistema non lo intercetta prima
-        // e tutti i MotionEvent multitouch arrivano correttamente al listener.
         @SuppressLint("ClickableViewAccessibility")
         binding.root.setOnTouchListener { _, event ->
             when (event.actionMasked) {
@@ -198,32 +203,18 @@ class MainActivity : AppCompatActivity() {
                     longPressHandler.removeCallbacks(longPressRunnable)
                 }
             }
-            true  // consuma l'evento — necessario per ricevere tutti gli eventi multitouch
+            true
         }
 
-        // ── Collect dashState ─────────────────────────────────────────────────
         lifecycleScope.launch {
             viewModel.dashState.collect { state ->
                 if (sweepDone) updateUI(state)
             }
         }
 
-        // ── Collect gLateral ──────────────────────────────────────────────────
-        lifecycleScope.launch {
-            viewModel.gLateral.collect { gLateral ->
-                runOnUiThread { updateGSensor(gLateral) }
-            }
-        }
-
-        // ── Collect calibState → pallino calibrazione ─────────────────────────
-        lifecycleScope.launch {
-            DashForegroundService.calibStateFlow.collect { state ->
-                runOnUiThread { updateCalibDot(state) }
-            }
-        }
-
         notifyTile()
     }
+
 
     override fun onResume() {
         super.onResume()
@@ -232,14 +223,42 @@ class MainActivity : AppCompatActivity() {
         // Aggiorna il pallino registrazione — potrebbe essere cambiato
         // tramite il tile di sistema mentre l'Activity era in pausa
         updateRecordingDot(dashService?.isLogging() == true)
+
+
     }
 
-    override fun onPause() {
-        super.onPause()
-        // Ri-scheduliamo hideSystemBars per quando torniamo in primo piano —
-        // il post delay dà tempo al sistema di completare la transizione
-        window.decorView.postDelayed({ hideSystemBars() }, 300)
+
+
+    @SuppressLint("SetTextI18n")
+    private fun updateLeanFromRotationVector(roll: Float) {
+        val absAngle = kotlin.math.abs(roll)
+        val percent = absAngle.coerceIn(0f, 60f).toInt()
+
+        // Colore dinamico
+        val color = when {
+            absAngle < 20f -> 0xFF00CC44.toInt() // Verde
+            absAngle < 40f -> 0xFFEF9F27.toInt() // Arancio
+            else           -> 0xFFFF3300.toInt() // Rosso
+        }
+
+        // Testo
+        binding.valLeanAngle.text = "${absAngle.toInt()}°"
+        binding.valLeanAngle.setTextColor(color)
+
+        // Barre sinistra/destra
+        if (roll > 0) {
+            binding.barLeanLeft.progress = 0
+            binding.barLeanRight.progress = percent
+        } else {
+            binding.barLeanLeft.progress = percent
+            binding.barLeanRight.progress = 0
+        }
+
+        setBarColor(binding.barLeanLeft, color)
+        setBarColor(binding.barLeanRight, color)
     }
+
+
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -265,21 +284,14 @@ class MainActivity : AppCompatActivity() {
 
     // ─── Status dots ──────────────────────────────────────────────────────────
 
-    private fun updateCalibDot(state: DashForegroundService.CalibState) {
-        val color = when (state) {
-            DashForegroundService.CalibState.IDLE          -> 0xFF333333.toInt() // grigio — nessuna sessione
-            DashForegroundService.CalibState.STATIC_WAIT   -> 0xFFEF9F27.toInt() // arancio — fase 1 in corso
-            DashForegroundService.CalibState.STATIC_DONE   -> 0xFF4DA6FF0.toInt() // azzurro — fase 1 ok
-            DashForegroundService.CalibState.MOTION_CALIB  -> 0xFF00CC44.toInt() // verde — fase 2 in corso
-        }
-        binding.dotCalib.setTextColor(color)
-    }
+
 
     fun updateRecordingDot(isRecording: Boolean) {
         binding.dotRecording.setTextColor(
             if (isRecording) 0xFF00CC44.toInt() else 0xFF333333.toInt()
         )
     }
+
 
     // ─── Init N/A ─────────────────────────────────────────────────────────────
 
@@ -340,7 +352,7 @@ class MainActivity : AppCompatActivity() {
 
     // ─── G Laterali ───────────────────────────────────────────────────────────
 
-    @SuppressLint("SetTextI18n")
+   /* @SuppressLint("SetTextI18n")
     private fun updateGSensor(gLateral: Float) {
         // 1. Calcolo Angolo (gLateral arriva corretto dal Service)
         val leanAngle = Math.toDegrees(Math.atan2(gLateral.toDouble(), 1.0)).toFloat()
@@ -376,7 +388,7 @@ class MainActivity : AppCompatActivity() {
         setBarColor(binding.barLeanLeft, color)
         setBarColor(binding.barLeanRight, color)
     }
-
+    */
     // ─── UI principale ────────────────────────────────────────────────────────
 
     @SuppressLint("SetTextI18n")
@@ -540,27 +552,28 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         longPressHandler.removeCallbacks(longPressRunnable)
 
-        // Se il servizio è connesso, facciamo pulizia prima di chiudere
+        // ← Salva lo stato PRIMA di qualsiasi unbind
+        val wasLogging = dashService?.isLogging() == true
+
         if (serviceBound) {
-            // Se NON stiamo registrando, fermiamo il servizio del tutto
-            if (dashService?.isLogging() != true) {
+            if (!wasLogging) {
                 DashForegroundService.stop(this)
                 DashTileService.updateTile(this, running = false, logging = false)
             } else {
-                // Se invece stiamo registrando, aggiorniamo solo il Tile
                 DashTileService.updateTile(this, running = true, logging = true)
             }
-
             unbindService(serviceConnection)
             serviceBound = false
         }
 
+        // ← leanSensor non viene mai fermato: leak garantito
+        leanSensor.stop()
+
         AppLog.close()
         super.onDestroy()
 
-        // Se l'app viene chiusa e non c'è una registrazione attiva,
-        // uccidiamo il processo per pulire la RAM al 100%
-        if (dashService?.isLogging() != true) {
+        // Ora la condizione è affidabile
+        if (!wasLogging) {
             android.os.Process.killProcess(android.os.Process.myPid())
         }
     }
@@ -639,8 +652,7 @@ class MainActivity : AppCompatActivity() {
         dialogView.findViewById<android.widget.Button>(R.id.btnExit).setOnClickListener {
             dialog.dismiss()
 
-            // Reset della memoria sensori prima di spegnere
-            dashService?.resetCalib()
+
 
             // Stop fisico al servizio (notifica e sensori)
             DashForegroundService.stop(this)

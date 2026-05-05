@@ -19,7 +19,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Centro barra superiore: MIL badge + pallino registrazione + pallino calibrazione -->
+    <!-- Centro barra superiore: MIL badge + pallino registrazione -->
     <LinearLayout
         android:id="@+id/statusRow"
         android:layout_width="wrap_content"
@@ -30,7 +30,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <!-- Badge MIL/DTC — visibile solo quando MIL accesa o DTC presenti -->
+        <!-- Badge MIL/DTC -->
         <TextView
             android:id="@+id/spiaMil"
             android:layout_width="wrap_content"
@@ -44,8 +44,8 @@
             android:paddingBottom="1dp"/>
 
         <!-- ● Registrazione
-             #333333 = off (grigio scuro)
-             #FF3300 = on  (rosso) -->
+             #333333 = off
+             #00CC44 = on -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -62,31 +62,7 @@
             android:text="●"
             android:textSize="11sp"
             android:textColor="#333333"
-            android:paddingEnd="10dp"
             android:contentDescription="Recording status"/>
-
-        <!-- ● Calibrazione IMU
-             #333333 = idle / non iniziata (grigio scuro)
-             #EF9F27 = in corso            (arancio)
-             #00CC44 = completata OK       (verde)
-             #FF3300 = fallita / timeout   (rosso) -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="CAL"
-            android:textSize="9sp"
-            android:textColor="#52556A"
-            android:textStyle="bold"
-            android:paddingEnd="2dp"
-            android:letterSpacing="0.05"/>
-        <TextView
-            android:id="@+id/dotCalib"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="●"
-            android:textSize="11sp"
-            android:textColor="#333333"
-            android:contentDescription="Calibration status"/>
 
     </LinearLayout>
 
@@ -248,14 +224,18 @@
                 android:layout_width="match_parent" android:layout_height="6dp"
                 android:layout_marginTop="4dp" android:max="100"
                 android:progress="0" android:progressTint="#FF6600"/>
-            <TextView android:id="@+id/valLoad"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="@string/na" android:textColor="#FFFFFF"
-                android:textSize="20sp" android:textStyle="bold"/>
+            <TextView
+                android:id="@+id/valLoad"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/na"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
             <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
         </LinearLayout>
 
-        <!-- LEAN ANGLE (ANGOLO DI PIEGA) -->
+        <!-- LEAN ANGLE -->
         <LinearLayout
             android:layout_width="match_parent" android:layout_height="0dp"
             android:layout_weight="0.87" android:layout_marginBottom="2dp"
@@ -265,7 +245,6 @@
                 android:text="LEAN ANGLE" android:textColor="#FFFFFF"
                 android:textSize="12sp" android:textStyle="bold"/>
 
-            <!-- Barre di inclinazione -->
             <LinearLayout
                 android:layout_width="match_parent" android:layout_height="10dp"
                 android:layout_marginTop="4dp"
@@ -273,7 +252,6 @@
                 android:weightSum="120"
                 android:background="#333333">
 
-                <!-- Barra Sinistra (max 60 gradi) -->
                 <ProgressBar android:id="@+id/barLeanLeft"
                     style="@android:style/Widget.ProgressBar.Horizontal"
                     android:layout_width="0dp" android:layout_height="10dp"
@@ -283,7 +261,6 @@
 
                 <View android:layout_width="2dp" android:layout_height="10dp" android:background="#FFFFFF"/>
 
-                <!-- Barra Destra (max 60 gradi) -->
                 <ProgressBar android:id="@+id/barLeanRight"
                     style="@android:style/Widget.ProgressBar.Horizontal"
                     android:layout_width="0dp" android:layout_height="10dp"
@@ -304,12 +281,12 @@
                     android:text="0°" android:textColor="#FFFFFF"
                     android:textSize="28sp" android:textStyle="bold" android:gravity="center"/>
 
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                <TextView android:id="@+id/valLeanSideRight"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:text="RIGHT" android:textColor="#666666"
-                    android:textSize="14sp" android:textStyle="bold" android:gravity="right" android:visibility="invisible"
-                    android:id="@+id/valLeanSideRight"/>
+                    android:textSize="14sp" android:textStyle="bold" android:gravity="right"
+                    android:visibility="invisible"/>
             </LinearLayout>
-
         </LinearLayout>
 
         <!-- ARIA + ANTICIPO -->
@@ -459,6 +436,7 @@
                 android:textSize="23sp" android:textStyle="bold" android:gravity="center"/>
         </LinearLayout>
     </LinearLayout>
+
     <!-- OVERLAY DI AVVIO -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/overlayStart"
@@ -473,20 +451,44 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <Button
-            android:id="@+id/btnStartOverlay"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="START"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:padding="16dp"
-            android:backgroundTint="#FF6600"
-            android:textColor="#FFFFFF"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:spacing="12dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent">
 
+            <!-- DASH LOGGER — avvia dashboard + logging -->
+            <Button
+                android:id="@+id/btnStartOverlay"
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:text="DASH LOGGER"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:padding="16dp"
+                android:backgroundTint="#FF6600"
+                android:textColor="#FFFFFF"/>
+
+            <!-- ONLY DASH — avvia dashboard senza logging -->
+            <Button
+                android:id="@+id/btnOnlyDash"
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="ONLY DASH"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:padding="16dp"
+                android:backgroundTint="#1A1A1A"
+                android:strokeColor="#FF6600"
+                android:textColor="#FF6600"/>
+
+        </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

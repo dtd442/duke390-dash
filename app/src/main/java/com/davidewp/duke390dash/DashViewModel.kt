@@ -19,7 +19,6 @@ class DashViewModel : ViewModel() {
 
     // Alias diretti dei companion StateFlow del service — zero overhead
     val dashState: StateFlow<DashState>          = DashForegroundService.dashState
-    val gLateral:  StateFlow<Float>              = DashForegroundService.gLateralFlow
     val gpsState:  StateFlow<GpsManager.GpsData> = DashForegroundService.gpsState
 
     fun saveSettings(
