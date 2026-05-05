@@ -23,9 +23,12 @@ class LeanAngleSensor(
 
     private var rollOffset         = 0f
     private var currentRaw         = 0f
+    private var filteredRoll       = 0f
     private var isCalibrating      = false
     private val calibSamples       = mutableListOf<Float>()
     private var onCalibrationDone: (() -> Unit)? = null
+
+    private var lastUpdate = 0L   // per limitare update UI a ~60Hz
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -40,11 +43,11 @@ class LeanAngleSensor(
         rollOffset    = 0f
         isCalibrating = false
         calibSamples.clear()
+        filteredRoll  = 0f
     }
 
-
     fun calibrate() {
-        rollOffset = currentRaw  // semplice, istantaneo
+        rollOffset = currentRaw
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -52,14 +55,27 @@ class LeanAngleSensor(
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type != Sensor.TYPE_GAME_ROTATION_VECTOR) return
 
+        // Limita aggiornamenti a ~60Hz
+        val now = System.currentTimeMillis()
+        if (now - lastUpdate < 16) return
+        lastUpdate = now
+
+        // Ottieni rotation matrix dal rotation vector
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
 
-        // Telefono in portrait, schermo verso il guidatore:
-        // nessun remap necessario — orientation[2] è già il roll laterale
-        SensorManager.getOrientation(rotationMatrix, orientation)
+        // REMAP ASSI — fondamentale per avere roll stabile
+        SensorManager.remapCoordinateSystem(
+            rotationMatrix,
+            SensorManager.AXIS_X,   // telefono in portrait, schermo verso il guidatore
+            SensorManager.AXIS_Z,
+            rotationMatrix
+        )
 
+        // Ottieni angoli (radians → degrees)
+        SensorManager.getOrientation(rotationMatrix, orientation)
         currentRaw = Math.toDegrees(orientation[2].toDouble()).toFloat()
 
+        // Calibrazione (media di 60 campioni)
         if (isCalibrating) {
             calibSamples.add(currentRaw)
             if (calibSamples.size >= CALIB_SAMPLES) {
@@ -72,7 +88,12 @@ class LeanAngleSensor(
             return
         }
 
-        onLeanUpdate(currentRaw - rollOffset)
+        // LOW-PASS FILTER — elimina jitter e oscillazioni
+        val corrected = currentRaw - rollOffset
+        filteredRoll = filteredRoll * 0.9f + corrected * 0.1f
+
+        // Callback verso la UI
+        onLeanUpdate(filteredRoll)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
