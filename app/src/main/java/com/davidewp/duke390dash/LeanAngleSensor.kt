@@ -12,7 +12,7 @@ class LeanAngleSensor(
 ) : SensorEventListener {
 
     companion object {
-        private const val CALIB_SAMPLES = 60  // ~1s a ~60Hz
+        private const val CALIB_SAMPLES = 60
     }
 
     private val sm        = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -28,7 +28,7 @@ class LeanAngleSensor(
     private val calibSamples       = mutableListOf<Float>()
     private var onCalibrationDone: (() -> Unit)? = null
 
-    private var lastUpdate = 0L   // per limitare update UI a ~60Hz
+    private var lastUpdate = 0L
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -63,11 +63,11 @@ class LeanAngleSensor(
         // Ottieni rotation matrix dal rotation vector
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
 
-        // REMAP ASSI — fondamentale per avere roll stabile
+        // REMAP per telefono in VERTICALE (portrait)
         SensorManager.remapCoordinateSystem(
             rotationMatrix,
-            SensorManager.AXIS_X,   // telefono in portrait, schermo verso il guidatore
-            SensorManager.AXIS_Z,
+            SensorManager.AXIS_X,   // asse laterale del telefono
+            SensorManager.AXIS_Z,   // asse verticale
             rotationMatrix
         )
 
