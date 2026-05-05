@@ -214,6 +214,15 @@ class ObdManager(private val context: Context) {
                 initElm327()
                 isConnected = true
                 _obdState.value = _obdState.value.copy(connected = true)
+
+
+
+                //testpid
+                testSupportedPids()
+
+
+
+
                 startReadLoop()
             }
         }
@@ -389,6 +398,16 @@ class ObdManager(private val context: Context) {
             responseDeferred = null
             responseBuffer.clear()
             null
+        }
+    }
+
+    //testpid
+    suspend fun testSupportedPids() {
+        val cmds = listOf("0100", "0120", "0140", "0160")
+
+        for (cmd in cmds) {
+            val resp = readPid(cmd)
+            AppLog.add(TAG, "TEST PID $cmd -> $resp")
         }
     }
 
