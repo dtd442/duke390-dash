@@ -269,15 +269,15 @@ class MainActivity : AppCompatActivity() {
         val color = when (state) {
             DashForegroundService.CalibState.IDLE          -> 0xFF333333.toInt() // grigio — nessuna sessione
             DashForegroundService.CalibState.STATIC_WAIT   -> 0xFFEF9F27.toInt() // arancio — fase 1 in corso
-            DashForegroundService.CalibState.STATIC_DONE   -> 0xFF00CC44.toInt() // verde — fase 1 ok
-            DashForegroundService.CalibState.MOTION_CALIB  -> 0xFF4DA6FF.toInt() // azzurro — fase 2 in corso
+            DashForegroundService.CalibState.STATIC_DONE   -> 0xFF4DA6FF0.toInt() // azzurro — fase 1 ok
+            DashForegroundService.CalibState.MOTION_CALIB  -> 0xFF00CC44.toInt() // verde — fase 2 in corso
         }
         binding.dotCalib.setTextColor(color)
     }
 
     fun updateRecordingDot(isRecording: Boolean) {
         binding.dotRecording.setTextColor(
-            if (isRecording) 0xFFFF3300.toInt() else 0xFF333333.toInt()
+            if (isRecording) 0xFF00CC44.toInt() else 0xFF333333.toInt()
         )
     }
 
@@ -595,6 +595,9 @@ class MainActivity : AppCompatActivity() {
         val txtLogStatus    = dialogView.findViewById<android.widget.TextView>(R.id.txtLogStatus)
         val spinnerLanguage = dialogView.findViewById<android.widget.Spinner>(R.id.spinnerLanguage)
 
+        val svc = dashService
+        updateLogStatus(txtLogStatus, btnToggleLog)
+        updateRecordingDot(svc?.isLogging() == true)
         val langOptions = listOf(
             getString(R.string.lang_system)  to "",
             getString(R.string.lang_italian) to "it",
